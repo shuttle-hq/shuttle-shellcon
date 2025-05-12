@@ -85,10 +85,9 @@ struct SpeciesQuery {
     scientific_name: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 struct FeedingScheduleParams {
-    species_id: i32,
-    tank_id: String,
+    tank_id: Option<String>,
     custom_diet: Option<String>,
 }
 
@@ -124,7 +123,8 @@ async fn axum(
     let router = Router::new()
         .route("/api/species", get(get_species))
         .route("/api/species/:id", get(get_species_by_id))
-        .route("/api/feeding/schedule", get(get_feeding_schedule))
+        // RESTful endpoint for feeding schedules
+        .route("/api/species/:species_id/feeding-schedule", get(get_feeding_schedule))
         .route("/api/health", get(health_check))
         .with_state(state)
         .layer(cors);
@@ -284,7 +284,9 @@ async fn get_species_by_id(
 
 // CHALLENGE #3: Fix the error handling in this function
 // This function panics when an error occurs, crashing the service
+// RESTful handler for feeding schedules
 async fn get_feeding_schedule(
+    Path(species_id): Path<i32>,
     Query(params): Query<FeedingScheduleParams>,
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -292,14 +294,13 @@ async fn get_feeding_schedule(
     let start = std::time::Instant::now();
     
     // Validate species ID
-    if params.species_id <= 0 {
-        return Err(ApiError::InvalidQuery(format!("Invalid species ID: {}", params.species_id)));
+    if species_id <= 0 {
+        return Err(ApiError::InvalidQuery(format!("Invalid species ID: {}", species_id)));
     }
     
     // Get species info first - with proper error handling
-    // Use runtime query instead of compile-time checked macro
     let species = sqlx::query("SELECT * FROM species WHERE id = $1")
-        .bind(params.species_id)
+        .bind(species_id)
         .map(|row: sqlx::postgres::PgRow| {
             Species {
                 id: row.get("id"),
@@ -322,10 +323,10 @@ async fn get_feeding_schedule(
     
     // Use the ? operator with our custom ApiError
     let species = species.ok_or_else(|| {
-        ApiError::SpeciesNotFound(format!("Species with ID {} not found", params.species_id))
+        ApiError::SpeciesNotFound(format!("Species with ID {} not found", species_id))
     })?;
     
-    // Calculate feeding schedule based on species
+    // Calculate feeding schedule based on species and optional parameters
     let schedule = calculate_feeding_schedule(&species, &params);
     
     // Check if challenge is solved based on elapsed time
@@ -351,17 +352,40 @@ async fn get_feeding_schedule(
     Ok(Json(schedule))
 }
 
-fn calculate_feeding_schedule(species: &Species, _params: &FeedingScheduleParams) -> FeedingSchedule {
-    // Just an example implementation
+fn calculate_feeding_schedule(species: &Species, params: &FeedingScheduleParams) -> FeedingSchedule {
+    // Use custom diet if provided
+    let food_type = if let Some(diet) = &params.custom_diet {
+        diet.clone()
+    } else {
+        match species.diet_type.as_str() {
+            "carnivore" => "bloodworms".to_string(),
+            "herbivore" => "algae wafers".to_string(),
+            "filter feeder" => "phytoplankton".to_string(),
+            _ => "flake food".to_string(),
+        }
+    };
+    
+    // Adjust feeding times based on tank_id if provided (just for demonstration)
+    let feeding_times = if let Some(tank_id) = &params.tank_id {
+        if tank_id.contains("reef") {
+            vec!["07:00".to_string(), "12:00".to_string(), "17:00".to_string()]
+        } else if tank_id.contains("nano") {
+            vec!["09:00".to_string()]
+        } else {
+            vec!["08:00".to_string(), "16:00".to_string()]
+        }
+    } else {
+        vec!["08:00".to_string(), "16:00".to_string()]
+    };
+    
+    // Calculate amount based on species parameters
+    let amount_grams = (species.min_temperature + species.max_temperature) / 10.0;
+    
     FeedingSchedule {
         species_id: species.id,
-        feeding_times: vec!["08:00".to_string(), "16:00".to_string()],
-        food_type: match species.diet_type.as_str() {
-            "herbivore" => "Algae wafers".to_string(),
-            "carnivore" => "Shrimp pellets".to_string(),
-            _ => "Mixed feed".to_string(),
-        },
-        amount_grams: 2.5,
+        feeding_times,
+        food_type,
+        amount_grams,
     }
 }
 
