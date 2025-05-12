@@ -99,6 +99,16 @@ struct FeedingSchedule {
     amount_grams: f64,
 }
 
+// Tank information structure - mirrors data from aqua-monitor
+#[derive(Serialize, Deserialize, sqlx::FromRow)]
+struct Tank {
+    id: String,
+    name: String,
+    tank_type: String,
+    volume: f64,
+    description: Option<String>,
+}
+
 #[shuttle_runtime::main]
 async fn axum(
     #[shuttle_shared_db::Postgres] pool: PgPool,
@@ -123,7 +133,6 @@ async fn axum(
     let router = Router::new()
         .route("/api/species", get(get_species))
         .route("/api/species/:id", get(get_species_by_id))
-        // RESTful endpoint for feeding schedules
         .route("/api/species/:species_id/feeding-schedule", get(get_feeding_schedule))
         .route("/api/health", get(health_check))
         .with_state(state)
@@ -326,8 +335,25 @@ async fn get_feeding_schedule(
         ApiError::SpeciesNotFound(format!("Species with ID {} not found", species_id))
     })?;
     
-    // Calculate feeding schedule based on species and optional parameters
-    let schedule = calculate_feeding_schedule(&species, &params);
+    // If tank_id is provided, fetch tank information from our local tanks table
+    let tank_type = if let Some(tank_id) = &params.tank_id {
+        let tank = sqlx::query_as::<_, Tank>("SELECT * FROM tanks WHERE id = $1")
+            .bind(tank_id)
+            .fetch_optional(&state.pool)
+            .await
+            .map_err(|e| {
+                tracing::error!(error.message = %e, "Database error when fetching tank");
+                ApiError::Database(e)
+            })?;
+        
+        // If tank exists, use its type; otherwise, use default
+        tank.map(|t| t.tank_type)
+    } else {
+        None
+    };
+    
+    // Calculate feeding schedule based on species and tank_type
+    let schedule = calculate_feeding_schedule(&species, &params, tank_type);
     
     // Check if challenge is solved based on elapsed time
     let elapsed = start.elapsed().as_millis();
@@ -352,7 +378,7 @@ async fn get_feeding_schedule(
     Ok(Json(schedule))
 }
 
-fn calculate_feeding_schedule(species: &Species, params: &FeedingScheduleParams) -> FeedingSchedule {
+fn calculate_feeding_schedule(species: &Species, params: &FeedingScheduleParams, tank_type: Option<String>) -> FeedingSchedule {
     // Use custom diet if provided
     let food_type = if let Some(diet) = &params.custom_diet {
         diet.clone()
@@ -365,14 +391,13 @@ fn calculate_feeding_schedule(species: &Species, params: &FeedingScheduleParams)
         }
     };
     
-    // Adjust feeding times based on tank_id if provided (just for demonstration)
-    let feeding_times = if let Some(tank_id) = &params.tank_id {
-        if tank_id.contains("reef") {
-            vec!["07:00".to_string(), "12:00".to_string(), "17:00".to_string()]
-        } else if tank_id.contains("nano") {
-            vec!["09:00".to_string()]
-        } else {
-            vec!["08:00".to_string(), "16:00".to_string()]
+    // Adjust feeding times based on tank_type from our local database
+    let feeding_times = if let Some(tank_type) = tank_type {
+        match tank_type.as_str() {
+            "reef" => vec!["07:00".to_string(), "12:00".to_string(), "17:00".to_string()],
+            "nano" => vec!["09:00".to_string()],
+            "community" => vec!["08:00".to_string(), "16:00".to_string()],
+            _ => vec!["08:00".to_string(), "16:00".to_string()] // Default schedule
         }
     } else {
         vec!["08:00".to_string(), "16:00".to_string()]
