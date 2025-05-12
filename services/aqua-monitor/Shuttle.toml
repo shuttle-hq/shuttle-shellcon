@@ -1,0 +1,2 @@
+[shuttle_shared_db.postgres]
+local_uri = "postgres://postgres:postgres@localhost:5432/aqua_monitor"
