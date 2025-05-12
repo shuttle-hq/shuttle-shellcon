@@ -7,11 +7,9 @@ use shuttle_axum::axum::{
 };
 use tower_http::cors::{Any, CorsLayer};
 use serde::{Deserialize, Serialize};
-use sqlx::{PgPool, Row}; // Add Row trait for get() method
-// tower_http::trace::TraceLayer is used in the Shuttle examples but we're not using it here
+use sqlx::{PgPool, Row};
 use tracing;
 use thiserror::Error;
-// HashMap was likely used in an earlier implementation but is no longer needed
 
 // Custom Error Type for species-hub service
 #[derive(Debug, Error)]
@@ -34,7 +32,7 @@ pub enum ApiError {
 
 // Implement IntoResponse for our custom error type
 impl IntoResponse for ApiError {
-    fn into_response(self) -> axum::response::Response {
+    fn into_response(self) -> shuttle_axum::axum::response::Response {
         let (status, error_message) = match &self {
             ApiError::Database(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()),
             ApiError::SpeciesNotFound(id) => (StatusCode::NOT_FOUND, format!("Species not found: {}", id)),
@@ -51,12 +49,15 @@ impl IntoResponse for ApiError {
             "API error occurred"
         );
         
-        // Return status code and JSON error message
-        (status, Json(serde_json::json!({
+        // Create response with proper content type to ensure JSON is correctly processed
+        let body = Json(serde_json::json!({
             "error": error_message,
             "status": status.as_u16(),
             "timestamp": chrono::Utc::now().to_rfc3339()
-        }))).into_response()
+        }));
+        
+        // Convert to Response explicitly using shuttle_axum::axum::response
+        (status, body).into_response()
     }
 }
 
@@ -114,7 +115,6 @@ async fn axum(
     // Initialize state
     let state = AppState { pool };
     
-    // Configure CORS exactly like the Dad Joke example
     let cors = CorsLayer::new()
         .allow_origin("http://localhost:3000".parse::<HeaderValue>().unwrap())
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
@@ -123,13 +123,12 @@ async fn axum(
     // Build router with CORS
     let router = Router::new()
         .route("/api/species", get(get_species))
-        .route("/api/species/{id}", get(get_species_by_id))
+        .route("/api/species/:id", get(get_species_by_id))
         .route("/api/feeding/schedule", get(get_feeding_schedule))
         .route("/api/health", get(health_check))
         .with_state(state)
         .layer(cors);
     
-    // Return the router as ShuttleAxum
     Ok(router.into())
 }
 
@@ -179,7 +178,6 @@ async fn get_species(
             .await
             .map_err(ApiError::Database)?
     } else if let Some(scientific_name) = &params.scientific_name {
-        // Use runtime query instead of compile-time checked macro
         sqlx::query("SELECT * FROM species WHERE scientific_name LIKE $1")
             .bind(format!("%{}%", scientific_name))
             .map(|row: sqlx::postgres::PgRow| {
@@ -199,7 +197,6 @@ async fn get_species(
             .await
             .map_err(ApiError::Database)?
     } else {
-        // Use runtime query instead of compile-time checked macro
         sqlx::query("SELECT * FROM species LIMIT 100")
             .map(|row: sqlx::postgres::PgRow| {
                 Species {
@@ -251,7 +248,7 @@ async fn get_species(
 }
 
 async fn get_species_by_id(
-    Path(id): Path<i32>,
+    Path(id): Path<i32>, // Ensure this path extraction works with Axum 0.7.4
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, ApiError> {
     // Check if ID is valid
