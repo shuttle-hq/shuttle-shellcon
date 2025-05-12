@@ -42,3 +42,6 @@ Thumbs.db
 
 # Solution files (should be hidden initially)
 solutions/
+
+# Custom scripts
+scripts/
