@@ -7,7 +7,7 @@ use shuttle_axum::axum::{
 };
 use tower_http::cors::{CorsLayer, Any};
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use std::time::Duration;
 use std::sync::atomic::AtomicUsize;
 use tracing;
@@ -91,7 +91,7 @@ async fn axum(
     // Initialize state
     let state = AppState { pool };
     
-    // Configure CORS exactly like the Dad Joke example
+    // Configure CORS
     let cors = CorsLayer::new()
         .allow_origin("http://localhost:3000".parse::<HeaderValue>().unwrap())
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
@@ -99,14 +99,28 @@ async fn axum(
         
     // Build router with CORS
     let router = Router::new()
+        .route("/api/tanks", get(get_all_tanks))
         .route("/api/tanks/{id}/readings", get(get_tank_readings))
         .route("/api/sensors/status", get(get_sensor_status))
         .route("/api/health", get(health_check))
         .with_state(state)
         .layer(cors);
     
-    // Return the ShuttleAxum router - explicitly using Shuttle's type
+
     Ok(router.into())
+}
+
+// Returns a list of all unique tank IDs
+async fn get_all_tanks(
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, ApiError> {
+    let rows = sqlx::query("SELECT DISTINCT tank_id FROM tank_readings")
+        .fetch_all(&state.pool)
+        .await?;
+    let tank_ids: Vec<String> = rows.into_iter()
+        .map(|row| row.get::<String, _>("tank_id"))
+        .collect();
+    Ok(Json(tank_ids))
 }
 
 // CHALLENGE #1: Fix the blocking operation in this function
@@ -115,28 +129,28 @@ async fn get_tank_readings(
     Path(tank_id): Path<String>,
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, ApiError> {
-    // For the challenge, this is intentionally inefficient - we'll simulate the slow operation
-    // but use proper async code to avoid compiler errors
     
     // Start timing the request
     let start = std::time::Instant::now();
     
-    // Simulate a delay (for demonstration purposes)
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    
-    // First, check if the tank exists (this would be a real check in production)
+    // PROBLEM: Simple blocking file I/O - just read a configuration file
+    // This single line is the entire issue
+    let _config = std::fs::read_to_string("./config/tank_settings.json")
+        .unwrap_or_else(|_| "{}".to_string());
+
+    // First, check if the tank exists
     if tank_id.is_empty() {
         return Err(ApiError::TankNotFound("empty tank ID".to_string()));
     }
     
-    // Async database query using the proper pattern - now with proper error handling
+    // Async database query
     let readings = sqlx::query_as::<_, TankReading>(
         "SELECT * FROM tank_readings WHERE tank_id = $1 ORDER BY timestamp DESC LIMIT 10"
     )
     .bind(&tank_id)
     .fetch_all(&state.pool)
     .await
-    // Propagate database errors using ? operator
+    // Propagate database errors
     .map_err(ApiError::Database)?;
     
     // If no readings found, you could return a specialized error
@@ -159,7 +173,7 @@ async fn get_tank_readings(
         );
     }
     
-    // Custom metric showing real request duration instead of hardcoded values
+    // Custom metric showing request duration
     tracing::info!(
         histogram.request_duration_ms = elapsed,
         api.endpoint = "tank_readings",
