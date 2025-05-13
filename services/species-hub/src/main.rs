@@ -147,8 +147,22 @@ async fn get_species(
     Query(params): Query<SpeciesQuery>,
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, ApiError> {
-    // Start timing
+    // Create a span for species catalog search
+    let span = tracing::info_span!("species_catalog_search");
+    let _guard = span.enter();
+    
+    // Add request ID for correlation and timing
+    let request_id = uuid::Uuid::new_v4().to_string();
     let start = std::time::Instant::now();
+    
+    // Log operation start with search params
+    tracing::info!(
+        request_id = %request_id,
+        operation = "species_catalog_search",
+        search_by_name = params.name.is_some(),
+        search_by_scientific_name = params.scientific_name.is_some(),
+        "Starting species catalog search"
+    );
     
     // Validate query parameters
     if let Some(name) = &params.name {
@@ -228,23 +242,16 @@ async fn get_species(
     // Calculate query time
     let query_time = start.elapsed().as_millis();
     
-    // Emit challenge status - triggered if query is fast
-    if query_time < 50 {
-        tracing::info!(
-            event.challenge_solved = "query_optimization",
-            challenge.id = 2,
-            challenge.status = "solved",
-            "Challenge #2 Solved: Query optimized!"
-        );
-    }
-    
+    // Log detailed performance metrics
     tracing::info!(
-        histogram.db_query_time_ms = query_time as f64,
-        db.rows_returned = species.len(),
-        db.query_type = "species_search",
-        challenge.current_query_time = query_time as f64,
+        request_id = %request_id,
+        operation = "species_catalog_search",
+        operation_status = if query_time < 50 { "optimized" } else { "standard" },
+        db_query_time_ms = query_time as f64,
+        db_rows_returned = species.len(),
+        db_query_type = "species_search",
         search_term = params.name.as_deref().unwrap_or_else(|| params.scientific_name.as_deref().unwrap_or("")),
-        "Species query completed"
+        "Species catalog search completed"
     );
     
     // If no species are found, we might want to return a specific error
@@ -257,9 +264,24 @@ async fn get_species(
 }
 
 async fn get_species_by_id(
-    Path(id): Path<i32>, // Ensure this path extraction works with Axum 0.7.4
+    Path(id): Path<i32>,
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, ApiError> {
+    // Create a span for individual species lookup
+    let span = tracing::info_span!("species_profile_lookup");
+    let _guard = span.enter();
+    
+    // Add request ID for correlation
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let start_time = std::time::Instant::now();
+    
+    tracing::info!(
+        request_id = %request_id,
+        species_id = id,
+        operation = "species_profile_lookup",
+        "Starting species profile lookup"
+    );
+    
     // Check if ID is valid
     if id <= 0 {
         return Err(ApiError::InvalidQuery(format!("Invalid species ID: {}", id)));
@@ -285,22 +307,61 @@ async fn get_species_by_id(
         .await
         .map_err(ApiError::Database)?;
     
+    // Calculate operation duration
+    let elapsed = start_time.elapsed().as_millis() as f64;
+    
+    // Log based on operation result
     match species {
-        Some(s) => Ok(Json(s)),
-        None => Err(ApiError::SpeciesNotFound(format!("Species with ID {} not found", id))),
+        Some(s) => {
+            // Extract name for logging before moving s into the response
+            let species_name = s.name.clone();
+            
+            tracing::info!(
+                request_id = %request_id,
+                species_id = id,
+                species_name = %species_name,
+                db_query_time_ms = elapsed,
+                operation_status = "success",
+                "Species profile lookup succeeded"
+            );
+            
+            Ok(Json(s))
+        },
+        None => {
+            tracing::warn!(
+                request_id = %request_id,
+                species_id = id,
+                db_query_time_ms = elapsed,
+                operation_status = "not_found",
+                "Species profile lookup failed: species not found"
+            );
+            Err(ApiError::SpeciesNotFound(format!("Species with ID {} not found", id)))
+        }
     }
 }
 
-// CHALLENGE #3: Fix the error handling in this function
-// This function panics when an error occurs, crashing the service
-// RESTful handler for feeding schedules
+// This function needs improved error handling for robustness
 async fn get_feeding_schedule(
     Path(species_id): Path<i32>,
     Query(params): Query<FeedingScheduleParams>,
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, ApiError> {
-    // Start timing for potential challenge completion
+    // Create a span for feeding schedule generation
+    let span = tracing::info_span!("feeding_schedule_generator");
+    let _guard = span.enter();
+    
+    // Add request ID for correlation
+    let request_id = uuid::Uuid::new_v4().to_string();
     let start = std::time::Instant::now();
+    
+    tracing::info!(
+        request_id = %request_id,
+        species_id = species_id,
+        tank_id = params.tank_id.as_deref().unwrap_or("default"),
+        custom_diet = params.custom_diet.as_deref().unwrap_or("standard"),
+        operation = "feeding_schedule_generation",
+        "Starting feeding schedule generation"
+    );
     
     // Validate species ID
     if species_id <= 0 {
@@ -368,11 +429,14 @@ async fn get_feeding_schedule(
     
     // Log and return
     tracing::info!(
-        species.id = species.id,
-        species.name = %species.name,
-        schedule.times_per_day = schedule.feeding_times.len(),
-        histogram.feed_schedule_calc_ms = elapsed as f64,
-        "Feeding schedule calculated"
+        request_id = %request_id,
+        species_id = species.id,
+        species_name = %species.name,
+        feeding_times_per_day = schedule.feeding_times.len(),
+        food_type = %schedule.food_type,
+        schedule_calc_time_ms = elapsed as f64,
+        operation_status = "success",
+        "Feeding schedule generation completed"
     );
     
     Ok(Json(schedule))
@@ -415,113 +479,9 @@ fn calculate_feeding_schedule(species: &Species, params: &FeedingScheduleParams,
 }
 
 async fn health_check() -> impl IntoResponse {
+    // Create a span for species database health check
+    let span = tracing::info_span!("species_database_health");
+    let _guard = span.enter();
     StatusCode::OK
 }
 
-// SOLUTION FOR CHALLENGE #2
-// Optimize the query and add proper indexes:
-/*
-// In migrations folder, add an index:
-// CREATE INDEX idx_species_name ON species(name);
-// CREATE INDEX idx_species_scientific_name ON species(scientific_name);
-
-async fn get_species(
-    Query(params): Query<SpeciesQuery>,
-    State(state): State<AppState>,
-) -> impl IntoResponse {
-    let start = std::time::Instant::now();
-    
-    // Optimized query using proper indexing and ILIKE for case insensitivity
-    let species = if let Some(name) = &params.name {
-        sqlx::query_as!(
-            Species,
-            "SELECT * FROM species WHERE name ILIKE $1",
-            format!("%{}%", name)
-        )
-        .fetch_all(&state.pool)
-        .await
-        .unwrap_or_default()
-    } else if let Some(scientific_name) = &params.scientific_name {
-        sqlx::query_as!(
-            Species,
-            "SELECT * FROM species WHERE scientific_name ILIKE $1",
-            format!("%{}%", scientific_name)
-        )
-        .fetch_all(&state.pool)
-        .await
-        .unwrap_or_default()
-    } else {
-        sqlx::query_as!(Species, "SELECT * FROM species LIMIT 100")
-            .fetch_all(&state.pool)
-            .await
-            .unwrap_or_default()
-    };
-    
-    let query_time = start.elapsed().as_millis();
-    
-    tracing::info!(
-        histogram.db_query_time_ms = query_time as f64,
-        db.rows_returned = species.len(),
-        db.query_type = "species_search_optimized",
-        "Species query completed with optimization"
-    );
-    
-    Json(species)
-}
-*/
-
-// SOLUTION FOR CHALLENGE #3
-// Implement proper error handling:
-/*
-#[derive(Debug, thiserror::Error)]
-enum ApiError {
-    #[error("Species not found: {0}")]
-    SpeciesNotFound(i32),
-    
-    #[error("Database error: {0}")]
-    Database(#[from] sqlx::Error),
-    
-    #[error("Failed to calculate feeding schedule")]
-    CalculationError,
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> axum::response::Response {
-        let (status, message) = match &self {
-            ApiError::SpeciesNotFound(_) => (StatusCode::NOT_FOUND, self.to_string()),
-            ApiError::Database(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Database error occurred".to_string()),
-            ApiError::CalculationError => (StatusCode::BAD_REQUEST, self.to_string()),
-        };
-        
-        tracing::error!(error.message = %message, "API error occurred");
-        
-        (status, Json(serde_json::json!({ "error": message }))).into_response()
-    }
-}
-
-async fn get_feeding_schedule(
-    Query(params): Query<FeedingScheduleParams>,
-    State(state): State<AppState>,
-) -> Result<Json<FeedingSchedule>, ApiError> {
-    // Get species info first with proper error handling
-    let species = sqlx::query_as!(
-        Species,
-        "SELECT * FROM species WHERE id = $1",
-        params.species_id
-    )
-    .fetch_optional(&state.pool)
-    .await?
-    .ok_or(ApiError::SpeciesNotFound(params.species_id))?;
-    
-    // Calculate feeding schedule based on species
-    let schedule = calculate_feeding_schedule(&species, &params);
-    
-    tracing::info!(
-        counter.schedules_generated = 1,
-        "Feeding schedule generated for species {}",
-        species.name
-    );
-    
-    Ok(Json(schedule))
-}
-*/

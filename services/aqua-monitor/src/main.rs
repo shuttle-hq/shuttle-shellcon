@@ -2,7 +2,7 @@ use shuttle_axum::axum::{
     extract::{Path, State},
     http::{HeaderValue, Method, StatusCode},
     response::IntoResponse,
-    routing::get,
+    routing::{get},
     Json, Router,
 };
 use tower_http::cors::{CorsLayer, Any};
@@ -100,7 +100,8 @@ async fn axum(
     // Build router with CORS
     let router = Router::new()
         .route("/api/tanks", get(get_all_tanks))
-        .route("/api/tanks/{id}/readings", get(get_tank_readings))
+        .route("/api/tanks/:tank_id/readings", get(get_tank_readings))
+        .route("/api/tanks/:tank_id/validate-solution", get(validate_challenge_solution))
         .route("/api/sensors/status", get(get_sensor_status))
         .route("/api/health", get(health_check))
         .with_state(state)
@@ -123,38 +124,79 @@ async fn get_all_tanks(
     Ok(Json(tank_ids))
 }
 
-// CHALLENGE #1: Fix the blocking operation in this function
 // This function has a blocking operation that's causing high latency
 async fn get_tank_readings(
     Path(tank_id): Path<String>,
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, ApiError> {
+    // Create a span for tank sensor readings
+    let span = tracing::info_span!("tank_sensor_readings");
+    let _guard = span.enter();
+    
+    // Add request ID for correlation and include tank_id in all logs
+    let request_id = uuid::Uuid::new_v4().to_string();
+    tracing::info!(
+        request_id = %request_id,
+        tank_id = %tank_id,
+        operation = "get_tank_readings",
+        "Processing tank readings request"
+    );
     
     // Start timing the request
     let start = std::time::Instant::now();
     
     // PROBLEM: Simple blocking file I/O - just read a configuration file
     // This single line is the entire issue
+    let io_start = std::time::Instant::now();
+    
+    // CHALLENGE #1: Fix the blocking operation here by replacing std::fs with tokio::fs
+    tracing::debug!("Using blocking file I/O");
     let _config = std::fs::read_to_string("./config/tank_settings.json")
         .unwrap_or_else(|_| "{}".to_string());
+    
+    let io_duration = io_start.elapsed().as_millis();
+    tracing::debug!(
+        request_id = %request_id,
+        tank_id = %tank_id,
+        io_duration_ms = io_duration,
+        "Tank configuration file I/O completed"
+    );
 
     // First, check if the tank exists
     if tank_id.is_empty() {
+        tracing::warn!("Empty tank ID provided");
         return Err(ApiError::TankNotFound("empty tank ID".to_string()));
     }
     
     // Async database query
+    tracing::debug!("Starting database query");
+    let db_start = std::time::Instant::now();
     let readings = sqlx::query_as::<_, TankReading>(
         "SELECT * FROM tank_readings WHERE tank_id = $1 ORDER BY timestamp DESC LIMIT 10"
     )
     .bind(&tank_id)
     .fetch_all(&state.pool)
     .await
+
     // Propagate database errors
     .map_err(ApiError::Database)?;
+    let db_duration = db_start.elapsed().as_millis();
+    tracing::debug!(
+        request_id = %request_id,
+        tank_id = %tank_id,
+        db_duration_ms = db_duration,
+        db_rows_returned = readings.len(),
+        "Tank readings database query completed"
+    );
     
     // If no readings found, you could return a specialized error
     if readings.is_empty() {
+        tracing::info!(
+            request_id = %request_id,
+            tank_id = %tank_id,
+            data_found = false,
+            "No sensor readings found for tank"
+        );
         // For this example, we'll just return empty results
         // But in a real app, you might want to return a specific error:
         // return Err(ApiError::TankNotFound(format!("No readings for tank {}", tank_id)));
@@ -163,28 +205,86 @@ async fn get_tank_readings(
     // Calculate the actual request duration
     let elapsed = start.elapsed().as_millis() as f64;
     
-    // Emit challenge status based on actual latency
-    if elapsed < 100.0 {
-        tracing::info!(
-            event.challenge_solved = "latency",
-            challenge.id = 1,
-            challenge.status = "solved",
-            "Challenge #1 Solved: Latency optimized!"
-        );
-    }
-    
     // Custom metric showing request duration
     tracing::info!(
-        histogram.request_duration_ms = elapsed,
-        api.endpoint = "tank_readings",
-        challenge.current_latency = elapsed,
-        tank.id = %tank_id,
-        db.rows_returned = readings.len(),
-        "Tank readings retrieved"
+        request_id = %request_id,
+        tank_id = %tank_id,
+        request_duration_ms = elapsed,
+        api_endpoint = "tank_readings",
+        io_duration_ms = io_duration,
+        db_duration_ms = db_duration,
+        data_points_retrieved = readings.len(),
+        operation_status = "success",
+        "Tank environmental readings retrieved"
     );
     
-    Ok(Json(readings))
+    // Create a response that includes readings and metadata
+    let response = serde_json::json!({
+        "readings": readings,
+        "metadata": {
+            "tank_id": tank_id,
+            "count": readings.len(),
+            "latency_ms": elapsed,
+            "io_duration_ms": io_duration,
+            "db_duration_ms": db_duration
+        }
+    });
+    
+    Ok(Json(response))
 }
+
+// Function to validate if Challenge #1 has been properly implemented
+async fn validate_challenge_solution(
+    Path(_tank_id): Path<String>,
+    State(_state): State<AppState>,
+) -> impl IntoResponse {
+    // Create a span for sensor optimization validation
+    let span = tracing::info_span!("sensor_optimization_validation");
+    let _guard = span.enter();
+    // Start timing the request just for telemetry
+    let start_time = std::time::Instant::now();
+    
+    // Examine the source code to check if async I/O is being used
+    let source_path = std::path::Path::new(file!());
+    
+    // Try to read the source code
+    let source_code = match std::fs::read_to_string(source_path) {
+        Ok(code) => code,
+        Err(_) => return Json(serde_json::json!({
+            "valid": false,
+            "message": "Error validating solution."
+        }))
+    };
+    
+    // Check for evidence of async I/O implementation
+    let blocking_removed = !source_code.contains("std::fs::read_to_string(\"./config/tank_settings.json\")\n");
+    let async_added = source_code.contains("tokio::fs::read_to_string(\"./config/tank_settings.json\")\n        .await");
+    
+    // Solution is valid if async implementation is added and blocking is removed
+    let valid_solution = async_added && blocking_removed;
+    
+    // Create a lean response with only essential information
+    let response = serde_json::json!({
+        "valid": valid_solution,
+        "message": if valid_solution {
+            "Solution correctly implemented!"
+        } else {
+            "Solution not yet implemented."
+        }
+    });
+    
+    // Log the validation result with timing for observability
+    tracing::info!(
+        sensor_optimization = valid_solution,
+        request_time_ms = start_time.elapsed().as_millis(),
+        "Sensor I/O performance validation: {}", 
+        if valid_solution { "OPTIMIZED" } else { "NEEDS OPTIMIZATION" }
+    );
+    
+    Json(response)
+}
+
+// No mark_challenge_complete function needed - frontend will track challenge state
 
 // CHALLENGE #4: Fix the resource leak in this function
 // This function creates a new client for every request
@@ -204,6 +304,9 @@ static CLIENT_COUNT: AtomicUsize = AtomicUsize::new(0);
 async fn get_sensor_status(
     State(_state): State<AppState>,
 ) -> impl IntoResponse {
+    // Create a span for sensor status check
+    let span = tracing::info_span!("tank_sensor_status_check");
+    let _guard = span.enter();
     let _start = std::time::Instant::now();
     
     // ⚠ FIX NEEDED HERE ⚠
@@ -218,16 +321,16 @@ async fn get_sensor_status(
     tracing::info!(
         counter.active_connections = 1,
         counter.total_clients_created = clients_created as i64,
-        "Created new sensor connection"
+        "Created new tank sensor connection"
     );
     
     // Emit challenge status (solved if using static client)
     if false { // Change to: if std::option_env!("USING_STATIC_CLIENT").is_some() {
         tracing::info!(
-            event.challenge_solved = "resource_leak",
-            challenge.id = 4,
-            challenge.status = "solved",
-            "Challenge #4 Solved: Resource leak fixed!"
+            event_sensor_optimization = "complete",
+            optimization_type = "async_io",
+            optimization_status = "successful",
+            "Tank sensor response time optimized using async I/O!"
         );
     }
     
@@ -264,53 +367,3 @@ async fn get_sensor_status(
 async fn health_check() -> impl IntoResponse {
     StatusCode::OK
 }
-
-// SOLUTION FOR CHALLENGE #1
-// Replace the blocking code with async calls:
-/*async fn get_tank_readings(
-    Path(tank_id): Path<String>,
-    State(state): State<AppState>,
-) -> impl IntoResponse {
-    // Proper async database query
-    let readings = sqlx::query_as::<_, TankReading>(
-        "SELECT * FROM tank_readings WHERE tank_id = $1 ORDER BY timestamp DESC LIMIT 10"
-    )
-    .bind(&tank_id)
-    .fetch_all(&state.pool)
-    .await
-    .unwrap_or_default();
-    
-    // Track request duration with tracing
-    tracing::info!(
-        histogram.request_duration_ms = 10.0,  // Much faster now!
-        api.endpoint = "tank_readings",
-        "Tank readings retrieved asynchronously"
-    );
-    
-    Json(readings)
-}*/
-
-// SOLUTION FOR CHALLENGE #4
-// Use a shared client with once_cell:
-/*use once_cell::sync::Lazy;
-
-// Shared client for all requests
-static CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
-    reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .expect("Failed to create HTTP client")
-});
-
-async fn get_sensor_status(
-    State(state): State<AppState>,
-) -> impl IntoResponse {
-    // Use the shared client instead of creating a new one
-    let response = CLIENT.get("https://api.example.com/sensors")
-        .timeout(Duration::from_secs(2))
-        .send()
-        .await;
-    
-    // Rest of the function remains the same
-    // ...
-}*/
