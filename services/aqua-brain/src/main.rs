@@ -1,10 +1,10 @@
 use shuttle_axum::axum::extract::{Path, Query, State};
-use shuttle_axum::axum::http::{HeaderValue, Method, StatusCode};
+use shuttle_axum::axum::http::StatusCode;
 use shuttle_axum::axum::response::IntoResponse;
-use shuttle_axum::axum::routing::{get, post};
+use shuttle_axum::axum::routing::get;
 use shuttle_axum::axum::Json;
 use shuttle_axum::axum::Router;
-use tower_http::cors::{Any, CorsLayer};
+// CORS removed - managed by frontend
 use serde::{Deserialize, Serialize};
 // No unused imports
 use tracing;
@@ -57,21 +57,13 @@ impl IntoResponse for ApiError {
     }
 }
 
+// Empty AppState following KISS principle - no direct service-to-service communication
 #[derive(Clone)]
-struct AppState {
-    monitor_client: reqwest::Client,
-}
+struct AppState {}
 
-#[derive(Serialize, Deserialize, Clone)]
-struct SystemStatus {
-    environmental_monitoring: String, // "online", "degraded", "offline"
-    species_database: String,
-    feeding_system: String,
-    remote_monitoring: String,
-    analysis_engine: String,
-    overall_status: String,
-    last_updated: String,
-}
+// SystemStatus removed - following KISS principle
+// Each service should report its own status
+// Frontend is responsible for aggregating status information
 
 #[derive(Serialize, Deserialize, Clone)]
 struct AnalysisResult {
@@ -92,146 +84,27 @@ struct AnalysisParams {
     species_id: Option<i32>,
 }
 
-#[derive(Deserialize)]
-struct Challenge1SolutionRequest {
-    code: String,
-}
-
 #[shuttle_runtime::main]
 async fn axum() -> shuttle_axum::ShuttleAxum {
-    // Initialize clients
-    let monitor_client = reqwest::Client::new();
+    // Initialize state - no clients needed following our KISS architecture
+    let state = AppState {};
     
-    // Initialize state
-    let state = AppState {
-        monitor_client,
-    };
-    
-    // Configure CORS exactly like the Dad Joke example
-    let cors = CorsLayer::new()
-        .allow_origin("http://localhost:3000".parse::<HeaderValue>().unwrap())
-        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
-        .allow_headers(Any);
-        
-    // Build router with CORS
+    // Build router
     let router = Router::new()
-        .route("/api/system/status", get(get_system_status))
+        // No system status endpoint - following KISS principle, the frontend should
+        // call each service directly and compute the overall status
         .route("/api/analysis/tanks", get(get_all_tank_analysis))
         .route("/api/analysis/tanks/:tank_id", get(get_tank_analysis_by_id))
         .route("/api/challenges/current", get(get_current_challenge))
         .route("/api/challenges/test/1", get(test_challenge_1))
-        .route("/api/challenges/1/solution", post(test_challenge_1_solution))
+        // Challenge solution validation should be in the service where the implementation resides
+        // For Challenge #1, validation is done in the aqua-monitor service
         .route("/api/health", get(health_check))
-        .with_state(state)
-        .layer(cors);
+        .with_state(state);
     
     Ok(router.into())
 }
 
-// Function to check if Challenge #1 (latency issue) is solved
-async fn check_challenge_1_status() -> bool {
-    // No span here since this is called from other functions
-    tracing::info!("Checking sensor response time optimization status");
-    
-    // Make an API call to check if the solution is valid
-    // This directly validates the current implementation rather than depending on file state
-    let client = reqwest::Client::new();
-    
-    match client.get("http://localhost:8000/api/tanks/Tank-A1/validate-solution")
-              .timeout(std::time::Duration::from_secs(2))
-              .send()
-              .await {
-        Ok(response) => {
-            // Parse the JSON response
-            match response.json::<serde_json::Value>().await {
-                Ok(json) => {
-                    // Check if solution is valid based on the simplified response format
-                    let is_valid = json.get("valid").and_then(|v| v.as_bool()).unwrap_or(false);
-                    
-                    // Log the validation result
-                    tracing::info!("Sensor response time status: {}",
-                        if is_valid { "OPTIMIZED" } else { "NEEDS OPTIMIZATION" }
-                    );
-                    
-                    is_valid
-                },
-                Err(e) => {
-                    tracing::error!(error = %e, "Failed to parse validation response");
-                    false
-                }
-            }
-        },
-        Err(e) => {
-            tracing::error!(error = %e, "Failed to connect to validation endpoint");
-            false
-        }
-    }
-}
-
-async fn get_system_status(State(state): State<AppState>) -> Result<impl IntoResponse, ApiError> {
-    // Create a span for tracking aquarium system health check
-    let span = tracing::info_span!("aquarium_health_check");
-    let _guard = span.enter();
-    let start = std::time::Instant::now();
-    let _monitor_status = match state.monitor_client
-        .get("http://localhost:8001/api/health")
-        .timeout(std::time::Duration::from_secs(1))
-        .send()
-        .await {
-            Ok(response) if response.status().is_success() => "online",
-            Ok(_) => return Err(ApiError::SystemStatusUnavailable("Monitor service returned an error".into())),
-            Err(e) => {
-                // Show how errors are propagated with From<reqwest::Error>
-                // This will be automatically converted to ApiError::ExternalService
-                return Err(e.into());
-            }
-        };
-    
-    // Calculate response time
-    let response_time = start.elapsed().as_millis();
-    
-    // Check challenge statuses
-    let latency_solved = check_challenge_1_status().await;
-    let query_solved = false; // Challenge #2
-    let error_solved = std::env::var("CHALLENGE_3_SOLVED").is_ok();
-    let resource_solved = false; // Challenge #4
-    // Challenge #5 is already solved
-    
-    // Determine overall system status
-    let (env_monitoring_status, species_db_status, feeding_system_status, remote_monitoring_status, overall_status) = 
-        if latency_solved && query_solved && error_solved && resource_solved {
-            ("online", "online", "online", "online", "operational")
-        } else {
-            // Set individual statuses based on challenge completion
-            (
-                if latency_solved { "online" } else { "degraded" },
-                if query_solved { "online" } else { "degraded" },
-                if error_solved { "online" } else { "degraded" },
-                if resource_solved { "online" } else { "degraded" },
-                "critical" // Overall status is critical until all challenges are solved
-            )
-        };
-    
-    // Log the system status check with metrics
-    tracing::info!(
-        system_status = %overall_status,
-        response_time_ms = response_time as f64,
-        "System status retrieved"
-    );
-    
-    // Return system status
-    let status = SystemStatus {
-        environmental_monitoring: env_monitoring_status.to_string(),
-        species_database: species_db_status.to_string(),
-        feeding_system: feeding_system_status.to_string(),
-        remote_monitoring: remote_monitoring_status.to_string(),
-        analysis_engine: "online".to_string(), // Already solved with Challenge #5
-        overall_status: overall_status.to_string(),
-        last_updated: chrono::Utc::now().to_rfc3339(),
-    };
-    
-    Ok(Json(status))
-}
 
 #[derive(Serialize)]
 struct ChallengeSolution {
@@ -241,87 +114,105 @@ struct ChallengeSolution {
 }
 
 async fn get_current_challenge() -> impl IntoResponse {
-    // Create a span for tracking system optimization status
-    let span = tracing::info_span!("system_optimization_status");
+    // Create a span for tracking challenge metadata requests
+    let span = tracing::info_span!("challenge_metadata_request");
     let _guard = span.enter();
+    let request_id = uuid::Uuid::new_v4().to_string();
     
-    // This endpoint returns all challenges and their statuses
-    // It can be used by the frontend to display challenge progress
-    
-    // Check if challenges are solved by making API calls to test endpoints
-    let latency_solved = check_challenge_1_status().await;
-    let query_solved = false;   // Will be true when species search is optimized
-    let resource_solved = false; // Will be true when the sensor status uses a static client
-    // Challenge #5 has been updated to RESTful API structure and is already solved
-    // Log event for dashboard tracking - using consistent field naming
-    tracing::info!("System optimization status: sensor_latency={}, database_query={}, resource_usage={}, api_structure=optimal",
-        if latency_solved { "optimized" } else { "suboptimal" },
-        if query_solved { "optimized" } else { "suboptimal" },
-        if resource_solved { "optimized" } else { "suboptimal" }
+    tracing::info!(
+        request_id = %request_id,
+        operation = "get_challenge_metadata",
+        "Providing challenge metadata"
     );
     
     // Define detailed challenge information
     let challenge_1_solution = ChallengeSolution {
-        code: r#"// Replace this line:
-let _config = std::fs::read_to_string("./config/tank_settings.json")
-    .unwrap_or_else(|_| "{}".to_string());
+        code: r#"// Before: Blocking I/O
+// let config = std::fs::read_to_string("./config/tank_settings.json")
+//     .unwrap_or_else(|_| "{}".to_string());
+// Also remove the artificial delay
+// std::thread::sleep(std::time::Duration::from_millis(100));
 
-// With this:
-let _config = tokio::fs::read_to_string("./config/tank_settings.json")
-    .await
+// After: Async I/O
+let config = tokio::fs::read_to_string("./config/tank_settings.json").await
     .unwrap_or_else(|_| "{}".to_string());
 "#.to_string(),
-        explanation: "This solution replaces a blocking file I/O operation with an async version that won't block the entire thread.".to_string(),
+        explanation: "This solution replaces a blocking file I/O operation with an async version that won't block the entire thread, significantly improving response times and system throughput.".to_string(),
         lecture: r#"# Understanding Blocking vs. Non-Blocking I/O in Rust
 
-## The Problem
+## The Problem with Blocking I/O
 
 In an async Rust application, using synchronous I/O operations like `std::fs::read_to_string()` blocks the entire thread until the operation completes. This means:
 
 - No other tasks can run on that thread while waiting for I/O
 - Overall throughput is reduced
 - Response times become inconsistent
+- System scalability is limited
 
-## The Solution
+## The Async I/O Solution
 
 Replacing `std::fs` with `tokio::fs` makes the I/O operation truly asynchronous:
 
 ```rust
-let content = tokio::fs::read_to_string("path/to/file").await?;
+// Before: Blocking I/O
+// let config = std::fs::read_to_string("./config/tank_settings.json")
+//     .unwrap_or_else(|_| "{}".to_string());
+// Also remove the artificial delay
+// std::thread::sleep(std::time::Duration::from_millis(100));
+
+// After: Async I/O
+let config = tokio::fs::read_to_string("./config/tank_settings.json").await
+    .unwrap_or_else(|_| "{}".to_string());
 ```
 
-This allows the Tokio runtime to:
+## Performance Benefits
 
-1. Suspend only the current task (not the entire thread)
-2. Schedule other tasks to run while waiting
-3. Resume the task when the I/O completes
+Async I/O provides several key benefits:
 
-## Why This Works
+1. **Concurrency**: Multiple I/O operations can be in progress simultaneously
+2. **Throughput**: The system can handle more requests per second
+3. **Responsiveness**: Critical operations don't get blocked by slow I/O
+4. **Resource Efficiency**: Thread resources aren't wasted waiting for I/O
 
-Under the hood, Tokio uses an event-driven architecture with an I/O event queue. When you call an async function and await it:
+## How Tokio's Async I/O Works
 
-1. The current task is suspended and stored with a continuation
-2. The I/O operation is registered with the OS
-3. When the OS signals completion, Tokio wakes up the task
-4. The task continues from where it left off
+Under the hood, Tokio uses an event-driven architecture with an I/O event queue:
 
-This pattern is essential for high-performance Rust services.
+1. When you call an async function and `.await` it, the current task is suspended
+2. The I/O operation is registered with the OS's async I/O facilities
+3. The thread is free to process other tasks while waiting
+4. When the OS signals completion, Tokio wakes up the task
+5. The task continues from where it left off
+
+This cooperative multitasking model is the foundation of modern high-performance services.
+
+## Best Practices
+
+- Use async I/O for all potentially slow operations (file, network, etc.)
+- Keep CPU-intensive work off the async runtime when possible
+- Remember that `.await` points are where your function can be suspended
+- Use proper error handling with async operations
 "#.to_string(),
     };
     
-    // Return challenge status as JSON with detailed information
+    // Return challenge metadata as JSON with detailed information including validation endpoints
     Json(serde_json::json!({
         "challenges": [
             {
                 "id": 1,
                 "name": "latency-issue",
                 "title": "The Sluggish Sensor",
-                "description": "The environmental monitoring system is experiencing severe delays, preventing timely readings of tank conditions. Every second counts when maintaining delicate ecosystems!",
-                "hint": "Look for blocking operations in the tank readings function. In async Rust, using std::fs blocks the entire thread. Is there an async alternative?",
+                "description": "The environmental monitoring system is experiencing severe delays, preventing timely readings of tank conditions. The file I/O operations seem particularly slow, with response times far exceeding what should be expected even for standard disk operations. Every second counts when maintaining delicate ecosystems!",
+                "hint": "Look for blocking operations in the get_tank_readings function. In async Rust, using std::fs::read_to_string blocks the entire thread. Also, check if there are any artificial delays that might be contributing to the slowdown. The solution involves both using the right async I/O method and ensuring there are no unnecessary waits.",
                 "service": "aqua-monitor",
                 "file": "src/main.rs",
                 "function": "get_tank_readings",
-                "status": if latency_solved { "solved" } else { "pending" },
+                "status": "degraded", // Frontend must query the service directly for status
+                "validation_endpoint": {
+                    "service": "aqua-monitor",
+                    "url": "/api/challenges/1/validate",
+                    "method": "GET"
+                },
                 "solution": challenge_1_solution
             },
             {
@@ -333,11 +224,67 @@ This pattern is essential for high-performance Rust services.
                 "service": "species-hub",
                 "file": "src/main.rs",
                 "function": "get_species",
-                "status": if query_solved { "solved" } else { "pending" },
+                "status": "degraded", // Frontend must query the service directly for status
+                "validation_endpoint": {
+                    "service": "species-hub",
+                    "url": "/api/species/validate-solution", // This will need to be implemented in species-hub
+                    "method": "GET"
+                },
                 "solution": ChallengeSolution {
-                    code: "// Solution code will be provided".to_string(),
-                    explanation: "Database indexing and query optimization solution".to_string(),
-                    lecture: "Lecture on database indexing and SQL optimization".to_string()
+                    code: r#"// Before: Inefficient LIKE query with case-sensitivity
+// sqlx::query("SELECT * FROM species WHERE name LIKE $1")
+//     .bind(format!("%{}%", name))
+
+// After: Optimized ILIKE query with trigram index
+sqlx::query("SELECT * FROM species WHERE name ILIKE $1")
+    .bind(format!("%{}%", name))
+"#.to_string(),
+                    explanation: "This solution replaces case-sensitive LIKE queries with case-insensitive ILIKE queries that can utilize PostgreSQL's trigram indexes, dramatically improving search performance.".to_string(),
+                    lecture: r#"# Database Query Optimization with Indexes
+
+## The Problem with Non-Indexed LIKE Queries
+
+When searching text fields with LIKE operators in SQL databases, performance suffers dramatically without proper indexing:
+
+- Each search requires a full table scan, examining every row
+- Query time grows linearly with table size
+- Case-sensitive searches miss potential matches
+- System throughput decreases under load
+
+## The Optimized Solution
+
+Two key improvements make our queries fast and user-friendly:
+
+```sql
+-- Before: Inefficient LIKE query with case-sensitivity
+-- SELECT * FROM species WHERE name LIKE '%search_term%'
+
+-- After: Optimized ILIKE query (works with trigram index)
+SELECT * FROM species WHERE name ILIKE '%search_term%'
+```
+
+## How PostgreSQL Trigram Indexes Work
+
+Trigram indexes break text into 3-character sequences, enabling efficient pattern matching:
+
+1. The text "Clownfish" produces trigrams: "clo", "low", "own", "wnf", "nfi", "fis", "ish"
+2. Searches for similar patterns can use the index rather than scanning the table
+3. ILIKE queries automatically benefit from trigram indexes when available
+
+## Performance Benefits
+
+- **Search Speed**: Queries can be 10-100x faster on large tables
+- **Case Insensitivity**: Finding "clownfish" when users search for "Clownfish"
+- **Scalability**: Performance stays consistent as the database grows
+- **User Experience**: Faster, more intuitive search results
+
+## Best Practices
+
+- Use `CREATE INDEX idx_name ON table USING gin (column gin_trgm_ops)` for trigram indexes
+- Consider partial indexes if you only search a subset of data
+- Analyze query plans with EXPLAIN ANALYZE to verify index usage
+- Monitor index size and rebuild periodically for optimal performance
+"#.to_string()
                 }
             },
             {
@@ -349,7 +296,12 @@ This pattern is essential for high-performance Rust services.
                 "service": "species-hub",
                 "file": "src/main.rs",
                 "function": "get_feeding_schedule",
-                "status": if std::env::var("CHALLENGE_3_SOLVED").is_ok() { "solved" } else { "pending" },
+                "status": "degraded", // Frontend must query the service directly for status
+                "validation_endpoint": {
+                    "service": "species-hub",
+                    "url": "/api/feeding/validate-solution", // This will need to be implemented in species-hub
+                    "method": "GET"
+                },
                 "solution": ChallengeSolution {
                     code: "// Solution code will be provided".to_string(),
                     explanation: "Proper error handling solution".to_string(),
@@ -365,7 +317,12 @@ This pattern is essential for high-performance Rust services.
                 "service": "aqua-monitor",
                 "file": "src/main.rs",
                 "function": "get_sensor_status",
-                "status": if resource_solved { "solved" } else { "pending" },
+                "status": "degraded", // Frontend must query the service directly for status
+                "validation_endpoint": {
+                    "service": "aqua-monitor",
+                    "url": "/api/sensors/validate-solution", // This will need to be implemented in aqua-monitor
+                    "method": "GET"
+                },
                 "solution": ChallengeSolution {
                     code: "// Solution code will be provided".to_string(),
                     explanation: "Resource management solution".to_string(),
@@ -381,7 +338,12 @@ This pattern is essential for high-performance Rust services.
                 "service": "aqua-brain",
                 "file": "src/main.rs",
                 "function": "shared_state_example",
-                "status": "pending",
+                "status": "degraded", // Frontend must query the service directly for status
+                "validation_endpoint": {
+                    "service": "aqua-brain",
+                    "url": "/api/shared-state/validate-solution", // Need to implement this endpoint in aqua-brain
+                    "method": "GET"
+                },
                 "solution": ChallengeSolution {
                     code: "// Example using Arc<tokio::sync::Mutex<T>>".to_string(),
                     explanation: "This solution demonstrates how to safely share and mutate state across async requests using a lock.".to_string(),
@@ -390,11 +352,7 @@ This pattern is essential for high-performance Rust services.
             }
         ],
         "total": 5,
-        "solved": (if latency_solved { 1 } else { 0 }) + 
-                 (if query_solved { 1 } else { 0 }) + 
-                 (if std::env::var("CHALLENGE_3_SOLVED").is_ok() { 1 } else { 0 }) +
-                 (if resource_solved { 1 } else { 0 }) + 
-                 1 // Challenge #5 is now always solved
+        "solved": 0, // Following KISS, the frontend will determine this by calling each service's validation endpoint
     }))
 }
 
@@ -406,78 +364,23 @@ async fn test_challenge_1() -> impl IntoResponse {
     
     tracing::info!("Sensor response time diagnostic requested");
     
-    // Check if the challenge is solved by validating the current implementation
-    let start = std::time::Instant::now();
-    let is_solved = check_challenge_1_status().await;
-    let test_duration = start.elapsed().as_millis();
-    
-    // Create a streamlined response with only essential information
+    // Create a response with only the information needed for the frontend
     let response = serde_json::json!({
         "id": 1,
         "name": "The Sluggish Sensor",
-        "solved": is_solved,
-        "message": if is_solved {
-            "Challenge solved! You've successfully implemented the async file I/O solution."
-        } else {
-            "Replace std::fs::read_to_string with tokio::fs::read_to_string and add .await to make the file I/O operation async."
-        },
-        "test_time_ms": test_duration
+        "message": "For validation, please call the aqua-monitor service at /api/challenges/1/validate",
+        "hint": "Replace std::fs::read_to_string with tokio::fs::read_to_string and add .await to make the file I/O operation async.",
+        "system_component": {
+            "name": "Analysis Engine",
+            "status": "normal",
+            "description": "Analysis engine operating normally"
+        }
     });
     
     tracing::info!(
         challenge_id = 1,
         challenge_name = "latency-issue",
-        test_duration_ms = test_duration,
-        challenge_solved = is_solved,
-        "Challenge #1 test completed"
-    );
-    
-    Json(response)
-}
-
-// Function to test a submitted solution for Challenge #1
-async fn test_challenge_1_solution(
-    State(_state): State<AppState>,
-    Json(payload): Json<Challenge1SolutionRequest>,
-) -> impl IntoResponse {
-    // Create a span for tracking sensor optimization implementation
-    let span = tracing::info_span!("sensor_optimization_implementation");
-    let _guard = span.enter();
-    
-    tracing::info!("Sensor optimization code submitted for implementation");
-    
-    // Validate the solution code
-    let is_valid_solution = payload.code.contains("tokio::fs::read_to_string") && 
-                           payload.code.contains(".await");
-    
-    tracing::info!(
-        solution.valid = is_valid_solution,
-        solution.contains_tokio_fs = payload.code.contains("tokio::fs::read_to_string"),
-        solution.contains_await = payload.code.contains(".await"),
-        "Solution validation completed"
-    );
-    
-    // Create detailed response with feedback
-    let response = serde_json::json!({
-        "challenge": {
-            "id": 1,
-            "name": "latency-issue",
-            "title": "The Sluggish Sensor",
-        },
-        "test_results": {
-            "success": true,
-            "valid_solution": is_valid_solution,
-            "message": if is_valid_solution {
-                "Your solution looks correct! Now edit the actual code in the aqua-monitor service to implement it."
-            } else {
-                "Your solution doesn't appear to use tokio::fs::read_to_string with .await. Make sure you're replacing the blocking I/O with an async version."
-            },
-            "details": "Replace std::fs::read_to_string with tokio::fs::read_to_string and add .await to make the file I/O operation async."
-        }
-    });
-    
-    tracing::info!("Sensor optimization validation completed, status: {}", 
-        if is_valid_solution { "SUCCESSFUL" } else { "NEEDS REVISION" }
+        "Challenge #1 test endpoint called - redirecting to service-specific validation"
     );
     
     Json(response)
@@ -486,6 +389,8 @@ async fn test_challenge_1_solution(
 async fn health_check() -> impl IntoResponse {
     StatusCode::OK
 }
+
+
 
 // Define a summary struct for collection response
 #[derive(Serialize)]

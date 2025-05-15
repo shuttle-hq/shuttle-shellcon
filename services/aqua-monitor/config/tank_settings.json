@@ -1,0 +1,29 @@
+{
+  "tanks": [
+    {
+      "id": "tank1",
+      "name": "Main Tank",
+      "volume_liters": 500,
+      "temperature_setpoint": 25.5,
+      "ph_min": 6.8,
+      "ph_max": 7.4,
+      "oxygen_min": 7.0,
+      "cleaning_interval_days": 14
+    },
+    {
+      "id": "tank2",
+      "name": "Quarantine Tank",
+      "volume_liters": 200,
+      "temperature_setpoint": 26.0,
+      "ph_min": 7.0,
+      "ph_max": 7.5,
+      "oxygen_min": 8.0,
+      "cleaning_interval_days": 7
+    }
+  ],
+  "general_settings": {
+    "alarm_notification": true,
+    "data_logging_interval_minutes": 15,
+    "maintenance_contact": "aqua-support@shellcon.example"
+  }
+}
