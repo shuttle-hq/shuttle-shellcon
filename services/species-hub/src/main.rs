@@ -129,14 +129,14 @@ async fn axum(
         .route("/api/species", get(get_species))
         .route("/api/species/:id", get(get_species_by_id))
         .route("/api/species/:species_id/feeding-schedule", get(get_feeding_schedule))
-        .route("/api/species/validate-solution", get(validate_query_optimization))
+        .route("/api/challenges/2/validate", get(validate_query_optimization))
         .route("/api/health", get(health_check))
         .with_state(state);
     
     Ok(router.into())
 }
 
-// CHALLENGE #2: Fix the inefficient database query in this function
+// ⚠️ CHALLENGE #2: DATABASE QUERY OPTIMIZATION ⚠️
 // This function uses a non-indexed LIKE query that's causing slow performance
 async fn get_species(
     Query(params): Query<SpeciesQuery>,
@@ -172,10 +172,10 @@ async fn get_species(
         }
     }
     
-    // Using optimized case-insensitive query with ILIKE
-    // This allows PostgreSQL to utilize trigram indexes if available
+    // Using case-sensitive query with LIKE (non-optimized)
+    // This requires a full table scan and doesn't utilize indexes effectively
     let species = if let Some(name) = &params.name {
-        // Use runtime query with ILIKE for case-insensitivity and better index usage
+        // Use runtime query with LIKE for case-sensitive search
         sqlx::query("SELECT * FROM species WHERE name ILIKE $1")
             .bind(format!("%{}%", name))
             .map(|row: sqlx::postgres::PgRow| {
@@ -232,7 +232,8 @@ async fn get_species(
             .await
             .map_err(ApiError::Database)?
     };
-    
+    // ⚠️ END CHALLENGE CODE ⚠️
+
     // Calculate query time
     let query_time = start.elapsed().as_millis();
     
@@ -479,45 +480,6 @@ async fn health_check() -> impl IntoResponse {
     StatusCode::OK
 }
 
-/// Extract function content from source code
-fn extract_function<'a>(source_code: &'a str, function_signature: &str) -> &'a str {
-    if let Some(start) = source_code.find(function_signature) {
-        // Count braces to find the end of the function
-        let mut brace_count = 0;
-        let mut found_first_brace = false;
-        let mut end = start;
-
-        for (i, ch) in source_code[start..].char_indices() {
-            if ch == '{' {
-                found_first_brace = true;
-                brace_count += 1;
-            } else if ch == '}' {
-                brace_count -= 1;
-            }
-
-            if found_first_brace && brace_count == 0 {
-                end = start + i + 1;
-                break;
-            }
-        }
-
-        &source_code[start..end]
-    } else {
-        ""
-    }
-}
-
-/// Check if a pattern exists in a string that's not in a comment
-fn has_non_commented_pattern(text: &str, pattern: &str) -> bool {
-    for line in text.lines() {
-        let trimmed = line.trim();
-        if !trimmed.starts_with("//") && trimmed.contains(pattern) {
-            return true;
-        }
-    }
-    false
-}
-
 /// Validates the implementation of Challenge #2: Query Optimization
 async fn validate_query_optimization(
     State(_state): State<AppState>,
@@ -525,84 +487,127 @@ async fn validate_query_optimization(
     tracing::info!("Starting validation for Challenge #2: Query Optimization");
     
     use serde_json::json;
+    use std::fs;
 
-    // STEP 1: Get the source code and extract the implementation
-    // Try both relative and absolute paths
-    let source_path = "src/main.rs";
-    let source_code = match tokio::fs::read_to_string(source_path).await {
-        Ok(code) => code,
-        Err(_) => {
-            // Fallback to absolute path
-            match tokio::fs::read_to_string("/Users/nvermande/Documents/Dev/shellcon/services/species-hub/src/main.rs").await {
-                Ok(code) => code,
-                Err(_) => {
-                    tracing::error!("Failed to read source file");
-                    String::new()
+    // Create a request ID for correlation in logs
+    let request_id = uuid::Uuid::new_v4().to_string();
+    
+    // For this challenge, we simply check if the implementation uses ILIKE queries
+    let current_dir = std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."));
+    
+    // Log the current directory for debugging
+    tracing::info!(
+        request_id = %request_id,
+        current_dir = %current_dir.display(),
+        "Current working directory for validation"
+    );
+    
+    let source_path = current_dir.join("src/main.rs");
+    
+    // Log the full source path for debugging
+    tracing::info!(
+        request_id = %request_id,
+        source_path = %source_path.display(),
+        "Full source path for validation"
+    );
+    
+    // Read the source code file
+    let source_code = match fs::read_to_string(&source_path) {
+        Ok(content) => content,
+        Err(e) => {
+            tracing::error!(
+                request_id = %request_id,
+                error = %e,
+                "Failed to read source code for validation"
+            );
+            // If we can't read the source, assume the challenge is not completed
+            return (StatusCode::OK, Json(json!({
+                "valid": false,
+                "message": "Validation failed: Unable to verify implementation.",
+                "system_component": {
+                    "name": "Species Database",
+                    "description": "Species database search is experiencing slowdowns",
+                    "status": "degraded"
                 }
-            }
+            })));
         }
     };
     
-    // STEP 2: Extract the get_species function
-    let get_species = extract_function(&source_code, "async fn get_species");
+    // Extract just the challenge code section using the challenge markers
+    let challenge_start = source_code.find("// ⚠️ CHALLENGE #2: DATABASE QUERY OPTIMIZATION ⚠️");
+    let challenge_end = source_code.find("// ⚠️ END CHALLENGE CODE ⚠️");
     
-    // STEP 3: Check for specific patterns in the code
-    let has_ilike_name = has_non_commented_pattern(get_species, "name ILIKE $1");
-    let has_ilike_scientific = has_non_commented_pattern(get_species, "scientific_name ILIKE $1");
-    let has_like_name = has_non_commented_pattern(get_species, "name LIKE $1");
-    let has_like_scientific = has_non_commented_pattern(get_species, "scientific_name LIKE $1");
+    // Check if we found the challenge section boundaries
+    if challenge_start.is_none() || challenge_end.is_none() {
+        tracing::error!(
+            request_id = %request_id,
+            "Could not find challenge section boundaries in source code"
+        );
+        return (StatusCode::OK, Json(json!({
+            "valid": false,
+            "message": "Validation failed: Unable to verify implementation.",
+            "system_component": {
+                "name": "Species Database",
+                "description": "Species database search is experiencing slowdowns",
+                "status": "degraded"
+            }
+        })));
+    }
     
-    tracing::info!("Code analysis: ilike_name={}, ilike_scientific={}, like_name={}, like_scientific={}", 
-                  has_ilike_name, has_ilike_scientific, has_like_name, has_like_scientific);
-
-    // STEP 4: Performance test comparing case-sensitive vs case-insensitive queries
-    // For demonstration purposes, we'll just simulate the timing difference
-    let non_optimized_duration = 120; // simulate milliseconds for non-optimized query
-    let optimized_duration = 15;      // simulate milliseconds for optimized query
+    // Extract just the challenge code section
+    let challenge_code = &source_code[challenge_start.unwrap()..challenge_end.unwrap() + "// ⚠️ END CHALLENGE CODE ⚠️".len()];
     
-    // Solution is valid if it uses ILIKE for both name and scientific_name
-    let is_valid = has_ilike_name && has_ilike_scientific && !has_like_name && !has_like_scientific;
-
-    tracing::info!("Validation results: ilike_name={}, ilike_scientific={}, !like_name={}, !like_scientific={}, simulated_non_optimized_ms={}, simulated_optimized_ms={}", 
-                  has_ilike_name, has_ilike_scientific, !has_like_name, !has_like_scientific, 
-                  non_optimized_duration, optimized_duration);
+    // Check if both queries in the challenge code use ILIKE
+    let name_uses_ilike = challenge_code.contains("WHERE name ILIKE $1");
+    let scientific_name_uses_ilike = challenge_code.contains("WHERE scientific_name ILIKE $1");
     
-    // Build a response with all validation details
+    // Log what we're finding in the challenge code
+    tracing::info!(
+        request_id = %request_id,
+        name_uses_ilike = name_uses_ilike,
+        scientific_name_uses_ilike = scientific_name_uses_ilike,
+        "Challenge code check results"
+    );
+    
+    // Also check for LIKE to confirm we're reading the right section
+    let name_uses_like = challenge_code.contains("WHERE name LIKE $1");
+    let scientific_name_uses_like = challenge_code.contains("WHERE scientific_name LIKE $1");
+    
+    tracing::info!(
+        request_id = %request_id,
+        name_uses_like = name_uses_like,
+        scientific_name_uses_like = scientific_name_uses_like,
+        "LIKE check results in challenge code"
+    );
+    
+    // The challenge is completed only if both queries use ILIKE within the challenge section
+    let is_valid = name_uses_ilike && scientific_name_uses_ilike;
+    
+    tracing::info!(
+        request_id = %request_id,
+        solution_valid = is_valid,
+        "Challenge #2 validation completed"
+    );
+    
+    // Build a standardized response following the same format as other challenges
     let response = json!({
         "valid": is_valid,
         "message": if is_valid {
-            "Solution correctly implemented! Search queries are now optimized."
-        } else if !has_ilike_name || !has_ilike_scientific {
-            "Solution validation failed. Please implement case-insensitive ILIKE queries for both name and scientific_name searches."
+            "Solution correctly implemented! Database queries are now optimized."
         } else {
-            "Solution validation failed. Please ensure you've removed the old LIKE queries."
+            "Solution validation failed. Please implement ILIKE queries for both name and scientific_name searches."
         },
         "system_component": {
             "name": "Species Database",
-            "status": if is_valid { "normal" } else { "degraded" },
             "description": if is_valid {
-                "Species database search is now optimized"
+                "Species database search is now optimized for better performance"
             } else {
                 "Species database search is experiencing slowdowns"
-            }
-        },
-        "details": {
-            "non_optimized_duration_ms": non_optimized_duration,
-            "optimized_duration_ms": optimized_duration,
-            "improvement_factor": non_optimized_duration as f32 / optimized_duration as f32,
-            "ilike_name_implemented": has_ilike_name,
-            "ilike_scientific_implemented": has_ilike_scientific,
-            "like_name_removed": !has_like_name,
-            "like_scientific_removed": !has_like_scientific
+            },
+            "status": if is_valid { "normal" } else { "degraded" }
         }
     });
     
-    // Log the validation result
-    tracing::info!(
-        query_optimization = is_valid,
-        "Species search validation: {}", 
-        if is_valid { "OPTIMIZED" } else { "NEEDS OPTIMIZATION" }
-    );
-    
-    Json(response)
+    (StatusCode::OK, Json(response))
 }

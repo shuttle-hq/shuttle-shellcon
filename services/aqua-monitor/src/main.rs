@@ -264,11 +264,13 @@ async fn get_tank_readings(
 }
 
 /// Validates the implementation of Challenge #1: Async I/O
-async fn validate_challenge_solution(State(_state): State<AppState>) -> impl IntoResponse {
+async fn validate_challenge_solution(
+    State(_state): State<AppState>,
+) -> impl IntoResponse {
     tracing::info!("Starting validation for Challenge #1: Async I/O");
-
-    use serde_json::json;
+    
     use std::time::Instant;
+    use serde_json::json;
 
     // STEP 1: Get the source code and extract the implementation
     // Try both relative and absolute paths
@@ -290,21 +292,17 @@ async fn validate_challenge_solution(State(_state): State<AppState>) -> impl Int
             }
         }
     };
-
+    
     // STEP 2: Extract the get_tank_readings function
     let get_tank_readings = extract_function(&source_code, "async fn get_tank_readings");
-
+    
     // STEP 3: Check for specific patterns in the code
     let has_tokio_fs = has_non_commented_pattern(get_tank_readings, "tokio::fs::read_to_string");
     let has_await = has_non_commented_pattern(get_tank_readings, ".await");
     let has_thread_sleep = has_non_commented_pattern(get_tank_readings, "thread::sleep");
-
-    tracing::info!(
-        "Code analysis: tokio_fs={}, await={}, thread_sleep={}",
-        has_tokio_fs,
-        has_await,
-        has_thread_sleep
-    );
+    
+    tracing::info!("Code analysis: tokio_fs={}, await={}, thread_sleep={}", 
+                  has_tokio_fs, has_await, has_thread_sleep);
 
     // STEP 4: Performance test comparing blocking vs async I/O
     // Create spans for each I/O operation test

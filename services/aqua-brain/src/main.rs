@@ -57,13 +57,8 @@ impl IntoResponse for ApiError {
     }
 }
 
-// Empty AppState following KISS principle - no direct service-to-service communication
 #[derive(Clone)]
 struct AppState {}
-
-// SystemStatus removed - following KISS principle
-// Each service should report its own status
-// Frontend is responsible for aggregating status information
 
 #[derive(Serialize, Deserialize, Clone)]
 struct AnalysisResult {
@@ -91,8 +86,6 @@ async fn axum() -> shuttle_axum::ShuttleAxum {
     
     // Build router
     let router = Router::new()
-        // No system status endpoint - following KISS principle, the frontend should
-        // call each service directly and compute the overall status
         .route("/api/analysis/tanks", get(get_all_tank_analysis))
         .route("/api/analysis/tanks/:tank_id", get(get_tank_analysis_by_id))
         .route("/api/challenges/current", get(get_current_challenge))
@@ -227,17 +220,27 @@ This cooperative multitasking model is the foundation of modern high-performance
                 "status": "degraded", // Frontend must query the service directly for status
                 "validation_endpoint": {
                     "service": "species-hub",
-                    "url": "/api/species/validate-solution", // This will need to be implemented in species-hub
+                    "url": "/api/challenges/2/validate", // Using standardized path format
                     "method": "GET"
                 },
                 "solution": ChallengeSolution {
-                    code: r#"// Before: Inefficient LIKE query with case-sensitivity
+                    code: r#"// Before: Inefficient LIKE queries with case-sensitivity
+// For name search:
 // sqlx::query("SELECT * FROM species WHERE name LIKE $1")
 //     .bind(format!("%{}%", name))
+// 
+// For scientific_name search:
+// sqlx::query("SELECT * FROM species WHERE scientific_name LIKE $1")
+//     .bind(format!("%{}%", scientific_name))
 
-// After: Optimized ILIKE query with trigram index
+// After: Optimized ILIKE queries with trigram index support
+// For name search:
 sqlx::query("SELECT * FROM species WHERE name ILIKE $1")
     .bind(format!("%{}%", name))
+
+// For scientific_name search:
+sqlx::query("SELECT * FROM species WHERE scientific_name ILIKE $1")
+    .bind(format!("%{}%", scientific_name))
 "#.to_string(),
                     explanation: "This solution replaces case-sensitive LIKE queries with case-insensitive ILIKE queries that can utilize PostgreSQL's trigram indexes, dramatically improving search performance.".to_string(),
                     lecture: r#"# Database Query Optimization with Indexes
@@ -299,7 +302,7 @@ Trigram indexes break text into 3-character sequences, enabling efficient patter
                 "status": "degraded", // Frontend must query the service directly for status
                 "validation_endpoint": {
                     "service": "species-hub",
-                    "url": "/api/feeding/validate-solution", // This will need to be implemented in species-hub
+                    "url": "/api/challenges/3/validate-solution",
                     "method": "GET"
                 },
                 "solution": ChallengeSolution {
@@ -317,10 +320,10 @@ Trigram indexes break text into 3-character sequences, enabling efficient patter
                 "service": "aqua-monitor",
                 "file": "src/main.rs",
                 "function": "get_sensor_status",
-                "status": "degraded", // Frontend must query the service directly for status
+                "status": "degraded",
                 "validation_endpoint": {
                     "service": "aqua-monitor",
-                    "url": "/api/sensors/validate-solution", // This will need to be implemented in aqua-monitor
+                    "url": "/api/challenges/4/validate-solution",
                     "method": "GET"
                 },
                 "solution": ChallengeSolution {
@@ -338,10 +341,10 @@ Trigram indexes break text into 3-character sequences, enabling efficient patter
                 "service": "aqua-brain",
                 "file": "src/main.rs",
                 "function": "shared_state_example",
-                "status": "degraded", // Frontend must query the service directly for status
+                "status": "degraded",
                 "validation_endpoint": {
                     "service": "aqua-brain",
-                    "url": "/api/shared-state/validate-solution", // Need to implement this endpoint in aqua-brain
+                    "url": "/api/challenges/5/validate-solution",
                     "method": "GET"
                 },
                 "solution": ChallengeSolution {
@@ -352,7 +355,7 @@ Trigram indexes break text into 3-character sequences, enabling efficient patter
             }
         ],
         "total": 5,
-        "solved": 0, // Following KISS, the frontend will determine this by calling each service's validation endpoint
+        "solved": 0,
     }))
 }
 
@@ -364,7 +367,6 @@ async fn test_challenge_1() -> impl IntoResponse {
     
     tracing::info!("Sensor response time diagnostic requested");
     
-    // Create a response with only the information needed for the frontend
     let response = serde_json::json!({
         "id": 1,
         "name": "The Sluggish Sensor",
@@ -515,7 +517,6 @@ async fn get_tank_analysis_by_id(
 
 // Helper function to generate analysis result (extracted from analyze_tank_conditions)
 fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
-    // No timing needed here as we're not measuring performance
     // Get tank_id or default to Tank-A1
     let tank_id = params.tank_id.clone().unwrap_or_else(|| "Tank-A1".to_string());
     
