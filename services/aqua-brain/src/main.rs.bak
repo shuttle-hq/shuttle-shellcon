@@ -299,35 +299,425 @@ AnalysisResult {
     ],
 }
 "#.to_string(),
-    explanation: "This solution optimizes memory usage by using static string references (&str) instead of creating new String objects for every analysis result. This reduces memory allocations and improves performance.".to_string(),
-    lecture: "# Memory Optimization in Rust: Static Strings vs. Dynamic Allocations
+        explanation: "This solution optimizes memory usage by using static string references (&str) instead of creating new String objects for every analysis result. This reduces memory allocations and improves performance.".to_string(),
+        lecture: r#"# Memory Optimization in Rust: Static Strings vs. Dynamic Allocations
 
 ## The Problem with Excessive String Allocations
 
-In Rust, when you see String creation operations, your program is doing extra work: it is reserving memory, copying characters, and tracking when to clean up. Think of it like making a photocopy of a document instead of just pointing to the original.
+In Rust, when you see '.to_string()' or 'String::from()', your program is doing extra work: it's reserving memory, copying characters, and tracking when to clean up. Think of it like making a photocopy of a document instead of just pointing to the original.
+
+This extra work causes several problems:
+
+- 📈 **More Memory Used**: Each 'String' takes up space on the heap (a region of memory for dynamic data)
+- 🐢 **Slower Performance**: Creating and cleaning up memory takes CPU time
+- 🔄 **Memory Fragmentation**: Like having scattered free seats in a theater instead of consecutive ones
+- 🔄 **More Garbage Collection**: The system has to work harder to clean up unused strings
+- 🔋 **Higher Energy Usage**: More CPU cycles means more power consumption
 
 ## The Static String Reference Solution
 
-Instead of making copies, you can use references to point to existing strings, especially for text that does not change.
+Instead of making copies, you can use references ('&str') to point to existing strings, especially for text that doesn't change:
 
-## Best Practices for Memory Optimization
+'''
+// Before: Making a new copy of "normal" in memory
+let status = "normal".to_string();
 
-- Use String when the text comes from user input or files, or when you need to modify it
-- Use &str when you just need to read the text or when it's a literal in your code
-- Consider making constants static when appropriate
-- Be mindful of unnecessary allocations in high-throughput code paths
+// After: Just pointing to the existing "normal" text (no extra memory needed)
+let status = "normal";  // This is actually &str type behind the scenes
+"""
+
+### Visual Example: Menu in a Restaurant
+
+Imagine two approaches for a restaurant menu:
+
+- **String approach**: Print a full copy of the menu for each customer (uses more paper, takes time to print)
+- **&str approach**: Have one menu on the wall that customers just look at (saves resources)
+
+## Performance Benefits Explained
+
+Using '&str' instead of 'String' when possible gives you:
+
+1. **Zero Allocation**: No extra memory needed = less RAM used
+2. **Speed**: Faster program execution without memory management overhead
+3. **Efficiency**: Better use of CPU cache (like having ingredients closer at hand when cooking)
+
+## Beginner-Friendly Best Practices
+
+### For Function Parameters:
+
+'''
+// Good: Accept &str when you just need to read
+fn greet(name: &str) { println!("Hello, {}", name); }
+
+// Less efficient: Forces callers to create String copies
+fn greet(name: String) { println!("Hello, {}", name); }
+"""
+
+### For Constant Values:
+
+'''
+// Define once, use many times without copies
+static ERROR_MESSAGE: &str = "Something went wrong";
+"""
+
+### In Structs:
+
+'''
+// Good for fixed values that won't change:
+struct Dog {
+    breed: &'static str,  // Like "Labrador" that won't change
+    name: String,         // Like "Buddy" that came from user input
+}
+"""
+
+## When To Use Each Type (Simple Guide)
+
+Use 'String' when:
+- The text comes from user input or files
+- You need to build or change the text
+- You're storing text in a collection for a long time
+
+Use '&str' when:
+- You just need to read the text
+- The text is a literal in your code like "hello"
+- You're passing text briefly to a function
+
+## Real-World Example:
+
+'''
+// A user profile system that optimizes memory
+
+// Constants (zero memory allocation)
+static DEFAULT_LOCATION: &str = "Unknown";
+static DEFAULT_BIO: &str = "This user hasn't added a bio yet";
+
+struct User {
+    // User-provided data needs String
+    username: String,
+    email: String,
+    
+    // Fixed options can use &'static str
+    account_type: &'static str,
+    
+    // Optional fields use Option<String> if user-provided
+    location: Option<String>,
+    
+    // Mutable with default value
+    bio: String,
+}
+
+impl User {
+    fn new(username: String, email: String) -> Self {
+        User {
+            username,
+            email,
+            account_type: "standard",  // No allocation here!
+            location: None,
+            bio: DEFAULT_BIO.to_string(),  // Only one allocation here
+        }
+    }
+    
+    // Function accepts &str to be flexible
+    fn set_location(&mut self, location: &str) {
+        self.location = Some(location.to_string());
+    }
+}
+"""
+
+By understanding when to use 'String' vs '&str', you'll write more efficient Rust code that uses less memory and runs faster!
+
+## Resource Management in Rust: Avoiding Leaks with Static Clients
+
+## The Problem with Creating HTTP Clients Per Request
+
+In HTTP-heavy applications, creating a new client for every request is a common but serious performance issue:
+
+- **Excessive Memory Usage**: Each client allocates its own connection pool and internal buffers
+- **Slow Performance**: Client initialization takes time (TLS setup, DNS resolution caching)
+- **Connection Churn**: Constant creation/destruction of TCP connections
+- **Resource Exhaustion**: Can lead to file descriptor limits being reached
+- **Poor Connection Reuse**: HTTP keep-alive benefits are lost
+
+## The Static Client Solution
+
+By creating a single, reusable HTTP client, we solve these problems:
+
+"""rust
+use lazy_static::lazy_static;
+
+// Create a single shared client for the entire application
+lazy_static! {
+    static ref HTTP_CLIENT: reqwest::Client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .expect("Failed to create HTTP client");
+}
+
+async fn make_request() {
+    // Use the shared client
+    let response = HTTP_CLIENT.get("https://api.example.com").send().await?;
+    // Process response...
+}
+"""
+
+## Key Implementation Options
+
+### 1. Using lazy_static
+
+The 'lazy_static' crate initializes static values on first use:
+
+"""rust
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref HTTP_CLIENT: reqwest::Client = reqwest::Client::new();
+}
+"""
+
+### 2. Using once_cell (More Modern)
+
+The 'once_cell' crate is now the preferred approach:
+
+"""rust
+use once_cell::sync::Lazy;
+
+static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| reqwest::Client::new());
+"""
 
 ## Performance Benefits
 
-- Zero Allocation: No extra memory needed = less RAM used
-- Speed: Faster program execution without memory management overhead
-- Efficiency: Better use of CPU cache for improved performance
+- **Connection Pooling**: HTTP connections are reused
+- **DNS Caching**: Hostnames are resolved once and cached
+- **TLS Session Resumption**: TLS handshakes can be reused
+- **Memory Efficiency**: Dramatic reduction in allocation overhead
+- **Scalability**: Applications can handle more concurrent requests
 
-By understanding when to use String vs &str, you'll write more efficient Rust code that uses less memory and runs faster!".to_string(),
-};
+## Common Pitfalls to Avoid
 
-let challenge_4_solution = ChallengeSolution {
-    code: r#"// Before: Creating a new client for every request
+- **Client Configuration**: Set appropriate timeouts and pool limits
+- **Thread Safety**: Ensure your static client is thread-safe (reqwest Client already is)
+- **Error Handling**: Handle client initialization failures gracefully
+- **Testing**: Static clients can make testing harder; consider dependency injection
+
+## Monitoring Resource Usage
+
+It is important to monitor the effects of your optimization:
+
+- Track memory usage before and after implementation
+- Monitor open file descriptors
+- Observe connection pooling behavior
+- Measure request latency improvements
+
+Properly implementing a shared static HTTP client is a small change with a huge impact on your service reliability and performance.
+- 🧠 **Excessive Memory Usage**: Each client allocates its own connection pool and internal buffers
+- 🐢 **Slow Performance**: Client initialization takes time (TLS setup, DNS resolution caching)
+- 🔌 **Connection Churn**: Constant creation/destruction of TCP connections
+- ⏱️ **Resource Exhaustion**: Can lead to file descriptor limits being reached
+- 🚫 **Poor Connection Reuse**: HTTP keep-alive benefits are lost
+
+## The Static Client Solution
+
+By creating a single, reusable HTTP client, we solve these problems:
+
+'''
+use lazy_static::lazy_static;
+
+// Create a single shared client for the entire application
+lazy_static! {
+    static ref HTTP_CLIENT: reqwest::Client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .expect("Failed to create HTTP client");
+}
+
+async fn make_request() {
+    // Use the shared client
+    let response = HTTP_CLIENT.get("https://api.example.com").send().await?;
+    // Process response...
+}
+"""
+
+## Key Implementation Options
+
+### 1. Using lazy_static
+
+The 'lazy_static' crate initializes static values on first use:
+
+'''
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref HTTP_CLIENT: reqwest::Client = reqwest::Client::new();
+}
+"""
+
+### 2. Using once_cell (More Modern)
+
+The 'once_cell' crate is now the preferred approach:
+
+'''
+use once_cell::sync::Lazy;
+
+static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| reqwest::Client::new());
+"""
+
+## Performance Benefits
+
+- **Connection Pooling**: HTTP connections are reused
+- **DNS Caching**: Hostnames are resolved once and cached
+- **TLS Session Resumption**: TLS handshakes can be reused
+- **Memory Efficiency**: Dramatic reduction in allocation overhead
+- **Scalability**: Applications can handle more concurrent requests
+
+## Common Pitfalls to Avoid
+
+- **Client Configuration**: Set appropriate timeouts and pool limits
+- **Thread Safety**: Ensure your static client is thread-safe (reqwest Client already is)
+- **Error Handling**: Handle client initialization failures gracefully
+- **Testing**: Static clients can make testing harder; consider dependency injection
+
+## Monitoring Resource Usage
+
+It is important to monitor the effects of your optimization:
+
+- Track memory usage before and after implementation
+- Monitor open file descriptors
+- Observe connection pooling behavior
+- Measure request latency improvements
+
+Properly implementing a shared static HTTP client is a small change with a huge impact on your service reliability and performance.
+"#.to_string(),
+    };
+
+## The Problem with Excessive String Allocations
+
+In Rust, when you see '.to_string()' or 'String::from()', your program is doing extra work: it's reserving memory, copying characters, and tracking when to clean up. Think of it like making a photocopy of a document instead of just pointing to the original.
+
+This extra work causes several problems:
+
+- 📈 **More Memory Used**: Each 'String' takes up space on the heap (a region of memory for dynamic data)
+- 🐢 **Slower Performance**: Creating and cleaning up memory takes CPU time
+- 🔄 **Memory Fragmentation**: Like having scattered free seats in a theater instead of consecutive ones
+- 🔄 **More Garbage Collection**: The system has to work harder to clean up unused strings
+- 🔋 **Higher Energy Usage**: More CPU cycles means more power consumption
+
+## The Static String Reference Solution
+
+Instead of making copies, you can use references ('&str') to point to existing strings, especially for text that doesn't change:
+
+'''
+// Before: Making a new copy of "normal" in memory
+let status = "normal".to_string();
+
+// After: Just pointing to the existing "normal" text (no extra memory needed)
+let status = "normal";  // This is actually &str type behind the scenes
+"""
+
+### Visual Example: Menu in a Restaurant
+
+Imagine two approaches for a restaurant menu:
+
+- **String approach**: Print a full copy of the menu for each customer (uses more paper, takes time to print)
+- **&str approach**: Have one menu on the wall that customers just look at (saves resources)
+
+## Performance Benefits Explained
+
+Using '&str' instead of 'String' when possible gives you:
+
+1. **Zero Allocation**: No extra memory needed = less RAM used
+2. **Speed**: Faster program execution without memory management overhead
+3. **Efficiency**: Better use of CPU cache (like having ingredients closer at hand when cooking)
+
+## Beginner-Friendly Best Practices
+
+### For Function Parameters:
+
+'''
+// Good: Accept &str when you just need to read
+fn greet(name: &str) { println!("Hello, {}", name); }
+
+// Less efficient: Forces callers to create String copies
+fn greet(name: String) { println!("Hello, {}", name); }
+"""
+
+### For Constant Values:
+
+'''
+// Define once, use many times without copies
+static ERROR_MESSAGE: &str = "Something went wrong";
+"""
+
+### In Structs:
+
+'''
+// Good for fixed values that won't change:
+struct Dog {
+    breed: &'static str,  // Like "Labrador" that won't change
+    name: String,         // Like "Buddy" that came from user input
+}
+"""
+
+## When To Use Each Type (Simple Guide)
+
+Use 'String' when:
+- The text comes from user input or files
+- You need to build or change the text
+- You're storing text in a collection for a long time
+
+Use '&str' when:
+- You just need to read the text
+- The text is a literal in your code like "hello"
+- You're passing text briefly to a function
+
+## Real-World Example:
+
+'''
+// A user profile system that optimizes memory
+
+// Constants (zero memory allocation)
+static DEFAULT_LOCATION: &str = "Unknown";
+static DEFAULT_BIO: &str = "This user hasn't added a bio yet";
+
+struct User {
+    // User-provided data needs String
+    username: String,
+    email: String,
+    
+    // Fixed options can use &'static str
+    account_type: &'static str,
+    
+    // Optional fields use Option<String> if user-provided
+    location: Option<String>,
+    
+    // Mutable with default value
+    bio: String,
+}
+
+impl User {
+    fn new(username: String, email: String) -> Self {
+        User {
+            username,
+            email,
+            account_type: "standard",  // No allocation here!
+            location: None,
+            bio: DEFAULT_BIO.to_string(),  // Only one allocation here
+        }
+    }
+    
+    // Function accepts &str to be flexible
+    fn set_location(&mut self, location: &str) {
+        self.location = Some(location.to_string());
+    }
+}
+"""
+
+By understanding when to use 'String' vs '&str', you'll write more efficient Rust code that uses less memory and runs faster!
+"#.to_string(),
+    };
+    
+    // Define Challenge #4 solution details
+    let challenge_4_solution = ChallengeSolution {
+        code: r#"// Before: Creating a new client for every request
 // This causes resource leaks and excessive memory usage
 async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoResponse {
     // Create a span for sensor status check
@@ -335,7 +725,7 @@ async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoResponse 
     let _guard = span.enter();
     let _start = std::time::Instant::now();
 
-    // BAD: This intentionally creates a new client for every request
+    // ❌ BAD: This intentionally creates a new client for every request
     // causing resource leakage
     let client = reqwest::Client::new();
     
@@ -361,7 +751,7 @@ async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoResponse 
     let _guard = span.enter();
     let _start = std::time::Instant::now();
 
-    // GOOD: Use the shared static client
+    // ✅ GOOD: Use the shared static client
     // No new client is created here
     let client = &HTTP_CLIENT;
     
@@ -369,232 +759,92 @@ async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoResponse 
     // but now uses the shared client
 }
 "#.to_string(),
-    explanation: "This solution addresses the resource leak by creating a static HTTP client using lazy_static or once_cell instead of creating a new client for every request. The static client is initialized only once and reused across all requests, significantly reducing memory usage and resource consumption.".to_string(),
-    lecture: r#"# Resource Management in Rust: A Beginner's Guide to Static HTTP Clients
+        explanation: "This solution addresses the resource leak by creating a static HTTP client using lazy_static or once_cell instead of creating a new client for every request. The static client is initialized only once and reused across all requests, significantly reducing memory usage and resource consumption.".to_string(),
+        lecture: r#"# Resource Management in Rust: Avoiding Leaks with Static Clients
 
-## Understanding the Problem: Why Creating New HTTP Clients is Inefficient
+## The Problem with Creating HTTP Clients Per Request
 
-When building web services in Rust, you often need to make HTTP requests to other services or APIs. The simplest approach might look like this:
+In HTTP-heavy applications, creating a new client for every request is a common but serious performance issue:
 
-```rust
-async fn get_data() -> Result<String, Error> {
-    // Creating a new client for every function call
-    let client = reqwest::Client::new();
-    
-    let response = client.get("https://api.example.com/data").send().await?;
-    response.text().await
-}
-```
+- 🧠 **Excessive Memory Usage**: Each client allocates its own connection pool and internal buffers
+- 🐢 **Slow Performance**: Client initialization takes time (TLS setup, DNS resolution caching)
+- 🔌 **Connection Churn**: Constant creation/destruction of TCP connections
+- ⏱️ **Resource Exhaustion**: Can lead to file descriptor limits being reached
+- 🚫 **Poor Connection Reuse**: HTTP keep-alive benefits are lost
 
-While this code works, it creates a serious performance problem when called frequently. **Every time** this function runs, it:
+## The Static Client Solution
 
-1. Allocates memory for a new client
-2. Sets up new connection pools 
-3. Initializes new TLS configurations
-4. Creates new DNS resolvers
+By creating a single, reusable HTTP client, we solve these problems:
 
-It's like buying a new car every time you need to drive somewhere, rather than reusing your existing car!
-
-## Why This Matters: Real-world Impact
-
-This inefficiency has several concrete consequences:
-
-- **Memory Usage**: Each new client can consume several hundred KB of memory
-- **CPU Overhead**: Creating HTTP clients takes significant CPU time for setup
-- **File Descriptor Exhaustion**: Each client's connection pool uses file descriptors, which are limited system resources
-- **Slower Response Times**: Without connection reuse, each request requires a new TCP handshake and possibly TLS negotiation
-
-In production services handling hundreds of requests per second, these issues can cause memory leaks, performance degradation, and eventually service outages.
-
-## The Solution: Static HTTP Clients
-
-Instead of creating a new client for each request, we can create one client **once** and reuse it for all requests. This is where "static" clients come in.
-
-## Implementation Option 1: Using `once_cell` (Recommended)
-
-The `once_cell` crate provides a simple way to create a static variable that is initialized only once, the first time it's used:
-
-```rust
-// First, add the dependency to your Cargo.toml:
-// once_cell = "1.8.0"
-
-// In your code file:
-use once_cell::sync::Lazy;
-use reqwest::Client;
-
-// Define a static HTTP client that will be initialized only once
-static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
-    // This closure runs only the first time HTTP_CLIENT is accessed
-    Client::new()
-});
-
-async fn get_data() -> Result<String, Error> {
-    // Now just use the shared client - no new allocation!
-    let response = HTTP_CLIENT.get("https://api.example.com/data").send().await?;
-    response.text().await
-}
-```
-
-## Implementation Option 2: Using `lazy_static`
-
-An older but still common approach uses the `lazy_static` crate:
-
-```rust
-// Add to Cargo.toml:
-// lazy_static = "1.4.0"
-
+'''
 use lazy_static::lazy_static;
-use reqwest::Client;
+
+// Create a single shared client for the entire application
+lazy_static! {
+    static ref HTTP_CLIENT: reqwest::Client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .expect("Failed to create HTTP client");
+}
+
+async fn make_request() {
+    // Use the shared client
+    let response = HTTP_CLIENT.get("https://api.example.com").send().await?;
+    // Process response...
+}
+"""
+
+## Key Implementation Options
+
+### 1. Using lazy_static
+
+The 'lazy_static' crate initializes static values on first use:
+
+'''
+use lazy_static::lazy_static;
 
 lazy_static! {
-    static ref HTTP_CLIENT: Client = Client::new();
+    static ref HTTP_CLIENT: reqwest::Client = reqwest::Client::new();
 }
+"""
 
-async fn get_data() -> Result<String, Error> {
-    // Use the same shared client
-    let response = HTTP_CLIENT.get("https://api.example.com/data").send().await?;
-    response.text().await
-}
-```
+### 2. Using once_cell (More Modern)
 
-## Configuring Your Static Client for Production
+The 'once_cell' crate is now the preferred approach:
 
-For real-world usage, you'll want to configure your client:
-
-```rust
-static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
-    Client::builder()
-        // Set a timeout for the entire request
-        .timeout(std::time::Duration::from_secs(30))
-        
-        // Set how long to wait for initial connection
-        .connect_timeout(std::time::Duration::from_secs(5))
-        
-        // Set how many idle connections to keep per host
-        .pool_max_idle_per_host(10)
-        
-        // How long to keep idle connections alive
-        .pool_idle_timeout(std::time::Duration::from_secs(60))
-        
-        // Build the client
-        .build()
-        .expect("Failed to create HTTP client")
-});
-```
-
-## Handling Errors Gracefully
-
-It's a good practice to handle client creation errors:
-
-```rust
-static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
-    match Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build() {
-            Ok(client) => client,
-            Err(e) => {
-                // Log the error
-                eprintln!("Failed to create optimal HTTP client: {}", e);
-                
-                // Fall back to a basic client
-                Client::new()
-            }
-    }
-});
-```
-
-## Thread Safety Considerations
-
-The good news is that `reqwest::Client` is already designed to be thread-safe, so you don't need to do anything special to use it in a multi-threaded context. This is why we can safely make it static.
-
-## Testing Code that Uses Static Clients
-
-Static variables can make testing harder. For better testability, consider:
-
-1. **Feature flags** to use mock clients in tests
-2. **Dependency injection** patterns where possible
-3. **Traits** to abstract client behavior
-
-## Before and After: The Code in Context
-
-Let's look at a complete example showing both the problem and solution:
-
-### Before (Problem):
-
-```rust
-use reqwest;
-
-async fn fetch_tank_status() -> Result<(), Box<dyn std::error::Error>> {
-    // 🚫 Problem: New client created each time
-    let client = reqwest::Client::new();
-    
-    // Make the request
-    let response = client
-        .get("https://api.example.com/tank/status")
-        .send()
-        .await?;
-    
-    // Process response...
-    println!("Status: {}", response.status());
-    
-    Ok(())
-}
-
-// This function gets called thousands of times in our service
-async fn monitor_tanks() {
-    for _ in 0..1000 {
-        // 🔥 Creates 1000 separate clients! Major resource waste
-        let _ = fetch_tank_status().await;
-    }
-}
-```
-
-### After (Solution):
-
-```rust
-use reqwest;
+'''
 use once_cell::sync::Lazy;
 
-// ✅ Create just one client for the entire application
-static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
-    reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .expect("Failed to create HTTP client")
-});
+static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| reqwest::Client::new());
+"""
 
-async fn fetch_tank_status() -> Result<(), Box<dyn std::error::Error>> {
-    // ✅ Reuse the shared client
-    let response = HTTP_CLIENT
-        .get("https://api.example.com/tank/status")
-        .send()
-        .await?;
-    
-    // Process response...
-    println!("Status: {}", response.status());
-    
-    Ok(())
-}
+## Performance Benefits
 
-// Now the same function is much more efficient
-async fn monitor_tanks() {
-    for _ in 0..1000 {
-        // ✅ Reuses the same client 1000 times - very efficient!
-        let _ = fetch_tank_status().await;
-    }
-}
-```
+- **Connection Pooling**: HTTP connections are reused
+- **DNS Caching**: Hostnames are resolved once and cached
+- **TLS Session Resumption**: TLS handshakes can be reused
+- **Memory Efficiency**: Dramatic reduction in allocation overhead
+- **Scalability**: Applications can handle more concurrent requests
 
-## Key Takeaways
+## Common Pitfalls to Avoid
 
-1. **Create HTTP clients once** and reuse them throughout your application
-2. Use **`once_cell`** or **`lazy_static`** to create shared static clients
-3. **Configure your clients** with appropriate timeouts and connection pool settings
-4. Remember that this simple change can dramatically **improve performance and reliability**
+- **Client Configuration**: Set appropriate timeouts and pool limits
+- **Thread Safety**: Ensure your static client is thread-safe (reqwest Client already is)
+- **Error Handling**: Handle client initialization failures gracefully
+- **Testing**: Static clients can make testing harder; consider dependency injection
 
-By implementing a static HTTP client, you'll build more efficient, reliable Rust services that can handle higher loads with fewer resources.
+## Monitoring Resource Usage
+
+It is important to monitor the effects of your optimization:
+
+- Track memory usage before and after implementation
+- Monitor open file descriptors
+- Observe connection pooling behavior
+- Measure request latency improvements
+
+Properly implementing a shared static HTTP client is a small change with a huge impact on your service reliability and performance.
 "#.to_string(),
-};
+    };
     
     // Return challenge metadata as JSON with detailed information including validation endpoints
     Json(serde_json::json!({
