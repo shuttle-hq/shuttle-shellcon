@@ -279,21 +279,72 @@ async fn validate_resource_leak_solution(
 ) -> impl IntoResponse {
     tracing::info!("Starting validation for Challenge #4: Resource Leak");
     
+    use std::fs;
     use serde_json::json;
     
     // Create a request ID for correlation in logs
     let request_id = uuid::Uuid::new_v4().to_string();
     
-    // Instead of trying to read the file, we'll directly check if we're using a static HTTP client
-    // by looking at the declarations in the current module
+    // Read the source code file
+    let source_path = std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join("src/main.rs");
     
-    // Check if HTTP_CLIENT exists and is used in get_sensor_status
-    let uses_static_client = true;  // We know we've implemented it correctly
+    let source_code = match fs::read_to_string(&source_path) {
+        Ok(content) => content,
+        Err(e) => {
+            tracing::error!(
+                request_id = %request_id,
+                error = %e,
+                "Failed to read source code file for Challenge #4 validation"
+            );
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+                "valid": false,
+                "message": "Validation failed: Unable to verify implementation.",
+                "system_component": {
+                    "name": "Sensor Status API",
+                    "description": "Sensor status API is creating too many client instances",
+                    "status": "degraded"
+                }
+            })));
+        }
+    };
     
-    tracing::info!(
-        request_id = %request_id,
-        "Direct validation of Challenge #4: Checking for static HTTP client"
-    );
+    // Find the challenge section boundaries
+    let challenge_start = source_code.find("// ⚠️ CHALLENGE #4: RESOURCE LEAK ⚠️");
+    let challenge_end = source_code.find("// ⚠️ END CHALLENGE CODE ⚠️");
+    
+    // Check if we found the challenge section boundaries
+    if challenge_start.is_none() || challenge_end.is_none() {
+        tracing::error!(
+            request_id = %request_id,
+            "Could not find challenge section boundaries in source code"
+        );
+        return (StatusCode::OK, Json(json!({
+            "valid": false,
+            "message": "Validation failed: Unable to verify implementation.",
+            "system_component": {
+                "name": "Sensor Status API",
+                "description": "Sensor status API is creating too many client instances",
+                "status": "degraded"
+            }
+        })));
+    }
+    
+    // Extract just the challenge code section
+    let challenge_code = &source_code[challenge_start.unwrap()..challenge_end.unwrap()];
+    
+    // Check for the use of a static HTTP client
+    // This checks for three key patterns that indicate a proper solution:
+    // 1. Definition of a static client (lazy_static or once_cell or static)
+    // 2. Absence of client creation in the request path
+    // 3. Use of the static client
+    
+    let uses_static_client = challenge_code.contains("lazy_static") || 
+                            challenge_code.contains("once_cell") ||
+                            (challenge_code.contains("static") && 
+                            challenge_code.contains("reqwest::Client") && 
+                            !challenge_code.contains("let client = reqwest::Client::new()"));
     
     // Log what we're finding in the challenge code
     tracing::info!(
