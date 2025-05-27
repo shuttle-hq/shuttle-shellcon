@@ -45,3 +45,6 @@ solutions/
 
 # Custom scripts
 scripts/
+
+# Windsurf
+.windsurf/
