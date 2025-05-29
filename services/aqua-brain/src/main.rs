@@ -10,6 +10,9 @@ use serde::{Deserialize, Serialize};
 use tracing;
 use thiserror::Error;
 
+// Import challenges module
+mod challenges;
+
 // Define a custom error type for better error handling
 #[derive(Debug, Error)]
 pub enum ApiError {
@@ -89,7 +92,7 @@ async fn axum() -> shuttle_axum::ShuttleAxum {
         .route("/api/analysis/tanks", get(get_all_tank_analysis))
         .route("/api/analysis/tanks/:tank_id", get(get_tank_analysis_by_id))
         .route("/api/challenges/current", get(get_current_challenge))
-        .route("/api/challenges/test/1", get(test_challenge_1))
+        .route("/api/challenges/test/1", get(challenges::test_challenge_1))
         .route("/api/challenges/3/validate", get(validate_memory_optimization))
         // Challenge solution validation should be in the service where the implementation resides
         // For Challenge #1, validation is done in the aqua-monitor service
@@ -963,62 +966,13 @@ By combining these practices, you'll create HTTP clients that are not only effic
                     "method": "GET"
                 },
                 "solution": challenge_4_solution
-            },
-            {
-                "id": 5,
-                "name": "shared-state-mutex ",
-                "title": "Safe Shared State ",
-                "description": "You need to maintain a shared counter or cache across requests, but naive approaches can cause data races or panics. Use Rust async-safe Mutex to implement correct shared state. ",
-                "hint": "Use Arc<Mutex<T>> or tokio::sync::Mutex for shared mutable state. Beware of holding locks across .await points!",
-                "service": "aqua-brain ",
-                "file": "src/main.rs ",
-                "function": "shared_state_example ",
-                "status": "degraded",
-                "validation_endpoint": {
-                    "service": "aqua-brain ",
-                    "url": "/api/challenges/5/validate-solution ",
-                    "method": "GET"
-                },
-                "solution": ChallengeSolution {
-                    code: "// Example using Arc<tokio::sync::Mutex<T>>".to_string(),
-                    explanation: "This solution demonstrates how to safely share and mutate state across async requests using a lock.".to_string(),
-                    lecture: "Lecture on Mutex, Arc, and shared state in async Rust".to_string()
-                }
             }
         ],
-        "total": 5,
+        "total": 4,
         "solved": 0,
     }))
 }
 
-// Dedicated endpoint for testing Challenge #1
-async fn test_challenge_1() -> impl IntoResponse {
-    // Create a span for tracking sensor latency diagnostics
-    let span = tracing::info_span!("sensor_latency_diagnostic");
-    let _guard = span.enter();
-    
-    tracing::info!("Sensor response time diagnostic requested");
-    
-    let response = serde_json::json!({
-        "id": 1,
-        "name": "The Sluggish Sensor ",
-        "message": "For validation, please call the aqua-monitor service at /api/challenges/1/validate",
-        "hint": "Replace std::fs::read_to_string with tokio::fs::read_to_string and add .await to make the file I/O operation async.",
-        "system_component": {
-            "name": "Analysis Engine ",
-            "status": "normal",
-            "description": "Analysis engine operating normally "
-        }
-    });
-    
-    tracing::info!(
-        challenge_id = 1,
-        challenge_name = "latency-issue",
-        "Challenge #1 test endpoint called - redirecting to service-specific validation"
-    );
-    
-    Json(response)
-}
 
 async fn health_check() -> impl IntoResponse {
     StatusCode::OK
@@ -1078,7 +1032,7 @@ async fn get_all_tank_analysis(
             tank_params.tank_id = Some(tank_id.to_string());
             
             // Get full analysis but only return summary
-            let full_analysis = get_analysis_result(tank_params);
+            let full_analysis = challenges::get_analysis_result(tank_params);
             
             // Convert to summary
             TankSummary {
@@ -1131,7 +1085,7 @@ async fn get_tank_analysis_by_id(
     tank_params.tank_id = Some(tank_id.clone());
     
     // Get single tank analysis
-    let result = get_analysis_result(tank_params);
+    let result = challenges::get_analysis_result(tank_params);
     
     // Log timing information on completion
     let elapsed = start_time.elapsed().as_millis() as f64;
@@ -1147,99 +1101,7 @@ async fn get_tank_analysis_by_id(
     Json(result)
 }
 
-// ⚠️ CHALLENGE #3: MEMORY OPTIMIZATION ⚠️
-// This function creates new String objects for every analysis result
-// Your task: Optimize memory usage by using static string references instead of creating new String objects
 
-// Define static string constants for common status values
-static WARNING: &str = "warning";
-static CRITICAL: &str = "critical";
-static NORMAL: &str = "normal";
-static LOW: &str = "low";
-static OVERDUE: &str = "overdue";
-static EXCESS: &str = "excess";
-static AT_RISK: &str = "at_risk";
-static GOOD: &str = "good";
-static CAUTION: &str = "caution";
-static HIGH: &str = "high";
-static UNKNOWN: &str = "unknown";
-
-fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
-    // Get tank_id or default to Tank-A1
-    let tank_id = params.tank_id.clone().unwrap_or_else(|| "Tank-A1".to_string());
-    
-    // Log the analysis operation with structured fields
-    tracing::debug!(
-        tank_id = %tank_id,
-        species_id = params.species_id,
-        analysis_type = "environmental",
-        operation = "tank_analysis",
-        "Analyzing tank environmental conditions"
-    );
-    
-    // Generate analysis result based on tank ID
-    match tank_id.as_str() {
-        "Tank-A1" => AnalysisResult {
-            tank_id: tank_id,
-            species_id: params.species_id.unwrap_or(1),
-            timestamp: chrono::Utc::now().to_rfc3339(),
-            temperature_status: WARNING,
-            ph_status: CRITICAL,
-            oxygen_status: NORMAL,
-            feeding_status: OVERDUE,
-            overall_health: AT_RISK,
-            recommendations: vec![
-                "Reduce temperature by 2°C",
-                "Adjust pH to 7.2-7.5 range",
-                "Administer emergency feeding",
-            ],
-        },
-        "Tank-B2" => AnalysisResult {
-            tank_id: tank_id,
-            species_id: params.species_id.unwrap_or(2),
-            timestamp: chrono::Utc::now().to_rfc3339(),
-            temperature_status: NORMAL,
-            ph_status: NORMAL,
-            oxygen_status: LOW,
-            feeding_status: NORMAL,
-            overall_health: GOOD,
-            recommendations: vec![
-                "Increase aeration slightly",
-                "Monitor oxygen levels daily",
-            ],
-        },
-        "Tank-C3" => AnalysisResult {
-            tank_id: tank_id,
-            species_id: params.species_id.unwrap_or(3),
-            timestamp: chrono::Utc::now().to_rfc3339(),
-            temperature_status: NORMAL,
-            ph_status: HIGH,
-            oxygen_status: NORMAL,
-            feeding_status: EXCESS,
-            overall_health: CAUTION,
-            recommendations: vec![
-                "Reduce feeding frequency",
-                "Perform 25% water change",
-                "Test ammonia levels",
-            ],
-        },
-        _ => AnalysisResult {
-            tank_id: tank_id,
-            species_id: params.species_id.unwrap_or(0),
-            timestamp: chrono::Utc::now().to_rfc3339(),
-            temperature_status: UNKNOWN,
-            ph_status: UNKNOWN,
-            oxygen_status: UNKNOWN,
-            feeding_status: UNKNOWN,
-            overall_health: UNKNOWN,
-            recommendations: vec![
-                "Verify tank ID",
-                "Setup monitoring system",
-            ],
-        },
-    }
-}
-// ⚠️ END CHALLENGE CODE ⚠️
 
 /// Validates the implementation of Challenge #3: Memory Optimization
 async fn validate_memory_optimization(
@@ -1256,7 +1118,7 @@ async fn validate_memory_optimization(
     // Extract just the challenge code section using the challenge markers
     let source_path = std::env::current_dir()
         .unwrap_or_else(|_| std::path::PathBuf::from("."))
-        .join("src/main.rs");
+        .join("src/challenges.rs");
     
     // Read the source code file
     let source_code = match fs::read_to_string(&source_path) {

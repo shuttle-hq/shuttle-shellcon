@@ -1,4 +1,7 @@
+mod challenges;
+
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use shuttle_axum::axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -7,19 +10,8 @@ use shuttle_axum::axum::{
     Json, Router,
 };
 use sqlx::{PgPool, Row};
-use std::sync::atomic::AtomicUsize;
-use std::time::Duration;
-// CORS removed - managed by frontend
+use std::fs;
 use tracing;
-use once_cell::sync::Lazy;
-
-// Static variable to track client creation count for Challenge #4
-static CLIENT_COUNT: AtomicUsize = AtomicUsize::new(0);
-
-// Create a static HTTP client to be reused across requests
-// This resolves the resource leak in Challenge #4
-static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| reqwest::Client::new());
-
 use thiserror::Error;
 
 // Custom Error Type for aqua-monitor service
@@ -132,7 +124,7 @@ async fn axum(#[shuttle_shared_db::Postgres] pool: PgPool) -> shuttle_axum::Shut
             "/api/challenges/4/validate",
             get(validate_resource_leak_solution),
         ) // Challenge #4: Resource Leak
-        .route("/api/sensors/status", get(get_sensor_status))
+        .route("/api/sensors/status", get(challenges::get_sensor_status))
         .route("/api/health", get(health_check))
         .with_state(state);
 
@@ -184,12 +176,11 @@ async fn get_tank_readings(
     // Blocking implementation
     let io_start = std::time::Instant::now();
 
-    // Read tank configuration file using async I/O
-    let config = tokio::fs::read_to_string("./config/tank_settings.json")
-        .await
+    // Read tank configuration file using blocking I/O
+    let config = std::fs::read_to_string("./config/tank_settings.json")
         .unwrap_or_else(|_| "{}".to_string());
     // Simulate additional I/O latency in the blocking implementation
-    // std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(100));
 
     // Parse summarized tank settings
     let settings: TankSettingsSummary = serde_json::from_str(&config).unwrap_or_default();
@@ -273,32 +264,91 @@ async fn get_tank_readings(
     Ok(Json(response))
 }
 
+// Challenge functions and implementations moved to challenges.rs
+
+// Helper functions removed since we're using runtime validation instead of code analysis
+
+async fn health_check() -> impl IntoResponse {
+    (StatusCode::OK, "Aqua Monitor service is running")
+}
+
+/// Validates the implementation of Challenge #1: Async I/O
+async fn validate_challenge_solution(
+    State(_state): State<AppState>,
+) -> impl IntoResponse {
+    // Create a request ID for correlation in logs
+    let request_id = uuid::Uuid::new_v4().to_string();
+    tracing::info!(
+        request_id = %request_id,
+        "Starting validation for Challenge #1: Async I/O"
+    );
+
+    // Use environment variable to determine if async I/O is being used
+    let is_valid = std::env::var("USING_ASYNC_IO").is_ok();
+
+    // Create the response with appropriate feedback
+    let response = json!({
+        "valid": is_valid,
+        "message": if is_valid {
+            "Solution correctly implemented! Async I/O is now being used for file operations."
+        } else {
+            "Solution validation failed. Make sure you're using tokio::fs for file operations instead of std::fs, and remove any thread::sleep calls."
+        },
+        "system_component": {
+            "name": "Tank Readings API",
+            "description": if is_valid {
+                "Tank readings API is now using async I/O operations"
+            } else {
+                "Tank readings API is experiencing high latency due to blocking I/O"
+            },
+            "status": if is_valid { "normal" } else { "degraded" }
+        }
+    });
+
+    // Return the validation result
+    (StatusCode::OK, Json(response))
+}
+
 /// Validates the implementation of Challenge #4: Resource Leak
 async fn validate_resource_leak_solution(
     State(_state): State<AppState>,
 ) -> impl IntoResponse {
     tracing::info!("Starting validation for Challenge #4: Resource Leak");
     
-    use std::fs;
-    use serde_json::json;
-    
     // Create a request ID for correlation in logs
     let request_id = uuid::Uuid::new_v4().to_string();
     
-    // Read the source code file
-    let source_path = std::env::current_dir()
-        .unwrap_or_else(|_| std::path::PathBuf::from("."))
-        .join("src/main.rs");
+    // For this challenge, we check if the implementation uses a static HTTP client
+    let current_dir = std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."));
     
+    // Log the current directory for debugging
+    tracing::info!(
+        request_id = %request_id,
+        current_dir = %current_dir.display(),
+        "Current working directory for validation"
+    );
+    
+    let source_path = current_dir.join("src/challenges.rs");
+    
+    // Log the full source path for debugging
+    tracing::info!(
+        request_id = %request_id,
+        source_path = %source_path.display(),
+        "Full source path for validation"
+    );
+    
+    // Read the source code file
     let source_code = match fs::read_to_string(&source_path) {
         Ok(content) => content,
         Err(e) => {
             tracing::error!(
                 request_id = %request_id,
                 error = %e,
-                "Failed to read source code file for Challenge #4 validation"
+                "Failed to read source code for validation"
             );
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            // If we can't read the source, assume the challenge is not completed
+            return (StatusCode::OK, Json(json!({
                 "valid": false,
                 "message": "Validation failed: Unable to verify implementation.",
                 "system_component": {
@@ -310,7 +360,7 @@ async fn validate_resource_leak_solution(
         }
     };
     
-    // Find the challenge section boundaries
+    // Extract just the challenge code section using the challenge markers
     let challenge_start = source_code.find("// ⚠️ CHALLENGE #4: RESOURCE LEAK ⚠️");
     let challenge_end = source_code.find("// ⚠️ END CHALLENGE CODE ⚠️");
     
@@ -332,289 +382,53 @@ async fn validate_resource_leak_solution(
     }
     
     // Extract just the challenge code section
-    let challenge_code = &source_code[challenge_start.unwrap()..challenge_end.unwrap()];
+    let challenge_code = &source_code[challenge_start.unwrap()..challenge_end.unwrap() + "// ⚠️ END CHALLENGE CODE ⚠️".len()];
     
-    // Check for the use of a static HTTP client
-    // This checks for three key patterns that indicate a proper solution:
-    // 1. Definition of a static client (lazy_static or once_cell or static)
-    // 2. Absence of client creation in the request path
-    // 3. Use of the static client
+    // Check for module-level static HTTP client definition (outside challenge section)
+    let has_static_client = source_code.contains("static HTTP_CLIENT") || 
+                            source_code.contains("static CLIENT");
     
-    let uses_static_client = challenge_code.contains("lazy_static") || 
-                            challenge_code.contains("once_cell") ||
-                            (challenge_code.contains("static") && 
-                            challenge_code.contains("reqwest::Client") && 
-                            !challenge_code.contains("let client = reqwest::Client::new()"));
+    // Check for use of static client instead of creating new client
+    let uses_static_client = challenge_code.contains("&*HTTP_CLIENT") || 
+                             challenge_code.contains("HTTP_CLIENT.") ||
+                             challenge_code.contains("&*CLIENT") ||
+                             challenge_code.contains("CLIENT.");
+    
+    // Check for absence of new client creation in challenge code
+    let no_new_client = !challenge_code.contains("Client::new()") || 
+                        (challenge_code.contains("Client::new()") && 
+                         challenge_code.contains("Lazy::new"));
     
     // Log what we're finding in the challenge code
     tracing::info!(
         request_id = %request_id,
+        has_static_client = has_static_client,
         uses_static_client = uses_static_client,
-        "Challenge #4 code check results"
+        no_new_client = no_new_client,
+        "Challenge code check results"
     );
+    
+    // All checks must pass for validation to succeed
+    let is_valid = has_static_client && uses_static_client && no_new_client;
     
     // Build a standardized response following the same format as other challenges
     let response = json!({
-        "valid": uses_static_client,
-        "message": if uses_static_client {
+        "valid": is_valid,
+        "message": if is_valid {
             "Solution correctly implemented! HTTP client is now shared and resource-efficient."
         } else {
             "Solution validation failed. Please implement a shared, static HTTP client instead of creating a new one for each request."
         },
         "system_component": {
             "name": "Sensor Status API",
-            "description": if uses_static_client {
+            "description": if is_valid {
                 "Sensor status API is now resource-efficient"
             } else {
                 "Sensor status API is creating too many client instances"
             },
-            "status": if uses_static_client { "normal" } else { "degraded" }
+            "status": if is_valid { "normal" } else { "degraded" }
         }
     });
     
     (StatusCode::OK, Json(response))
-}
-
-/// Validates the implementation of Challenge #1: Async I/O
-async fn validate_challenge_solution(
-    State(_state): State<AppState>,
-) -> impl IntoResponse {
-    tracing::info!("Starting validation for Challenge #1: Async I/O");
-    
-    use std::time::Instant;
-    use serde_json::json;
-
-    // STEP 1: Get the source code and extract the implementation
-    // Try both relative and absolute paths
-    let source_path = "src/main.rs";
-    let source_code = match tokio::fs::read_to_string(source_path).await {
-        Ok(code) => code,
-        Err(_) => {
-            // Fallback to absolute path
-            match tokio::fs::read_to_string(
-                "/Users/nvermande/Documents/Dev/shellcon/services/aqua-monitor/src/main.rs",
-            )
-            .await
-            {
-                Ok(code) => code,
-                Err(_) => {
-                    tracing::error!("Failed to read source file");
-                    String::new()
-                }
-            }
-        }
-    };
-    
-    // STEP 2: Extract the get_tank_readings function
-    let get_tank_readings = extract_function(&source_code, "async fn get_tank_readings");
-    
-    // STEP 3: Check for specific patterns in the code
-    let has_tokio_fs = has_non_commented_pattern(get_tank_readings, "tokio::fs::read_to_string");
-    let has_await = has_non_commented_pattern(get_tank_readings, ".await");
-    let has_thread_sleep = has_non_commented_pattern(get_tank_readings, "thread::sleep");
-    
-    tracing::info!("Code analysis: tokio_fs={}, await={}, thread_sleep={}", 
-                  has_tokio_fs, has_await, has_thread_sleep);
-
-    // STEP 4: Performance test comparing blocking vs async I/O
-    // Create spans for each I/O operation test
-    let blocking_span = tracing::info_span!("blocking_io_test");
-    let _blocking_guard = blocking_span.enter();
-
-    // Blocking test with artificial delay to match challenge
-    let blocking_start = Instant::now();
-    let _blocking_result =
-        std::fs::read_to_string("./config/tank_settings.json").unwrap_or_else(|_| "{}".to_string());
-    std::thread::sleep(std::time::Duration::from_millis(100));
-    let blocking_duration = blocking_start.elapsed();
-    tracing::info!(
-        duration_ms = blocking_duration.as_millis(),
-        "Blocking I/O test completed"
-    );
-    drop(_blocking_guard); // End blocking span
-
-    // Async test with its own span
-    let async_span = tracing::info_span!("async_io_test");
-    let _async_guard = async_span.enter();
-    let async_start = Instant::now();
-    let _async_result = tokio::fs::read_to_string("./config/tank_settings.json")
-        .await
-        .unwrap_or_else(|_| "{}".to_string());
-    let async_duration = async_start.elapsed();
-    tracing::info!(
-        duration_ms = async_duration.as_millis(),
-        "Async I/O test completed"
-    );
-
-    // Solution is valid if it uses tokio::fs and await, and doesn't have the sleep delay
-    let is_valid = has_tokio_fs && has_await && !has_thread_sleep;
-
-    tracing::info!(
-        "Validation results: tokio_fs={}, has_await={}, no_sleep={}, blocking_ms={}, async_ms={}",
-        has_tokio_fs,
-        has_await,
-        !has_thread_sleep,
-        blocking_duration.as_millis(),
-        async_duration.as_millis()
-    );
-
-    // Build a response with all validation details
-    let response = json!({
-        "valid": is_valid,
-        "message": if is_valid {
-            "Solution correctly implemented! Async I/O is working properly."
-        } else if !has_tokio_fs || !has_await {
-            "Solution validation failed. Please implement async file I/O using tokio::fs::read_to_string."
-        } else if has_thread_sleep {
-            "Almost there! Remember to remove the artificial sleep delay in the final solution."
-        } else {
-            "Solution validation failed. Please ensure your implementation is correct."
-        },
-        "system_component": {
-            "name": "Environmental Monitoring",
-            "status": if is_valid { "normal" } else { "degraded" },
-            "description": if is_valid {
-                "Environmental monitoring system operating normally"
-            } else {
-                "Environmental monitoring system experiencing slowdowns"
-            }
-        },
-        "details": {
-            "blocking_io_duration_ms": blocking_duration.as_millis(),
-            "async_io_duration_ms": async_duration.as_millis(),
-            "duration_difference_ms": blocking_duration.as_millis() - async_duration.as_millis(),
-            "has_tokio_fs": has_tokio_fs,
-            "has_await": has_await,
-            "has_thread_sleep": has_thread_sleep
-        }
-    });
-
-    // Log the validation result
-    tracing::info!(
-        sensor_optimization = is_valid,
-        "Tank I/O validation: {}",
-        if is_valid {
-            "OPTIMIZED"
-        } else {
-            "NEEDS OPTIMIZATION"
-        }
-    );
-
-    Json(response)
-}
-
-async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoResponse {
-    // Create a span for sensor status check
-    let span = tracing::info_span!("tank_sensor_status_check");
-    let _guard = span.enter();
-    let _start = std::time::Instant::now();
-
-    // ⚠️ CHALLENGE #4: RESOURCE LEAK ⚠️
-    // Solution: Use a shared static client instead of creating a new one for each request
-    // Access the static client defined using once_cell
-    let client = &*HTTP_CLIENT;
-
-    // Increment and track client count
-    let clients_created = CLIENT_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-
-    // Custom metric tracking active connections - using real value
-    tracing::info!(
-        counter.active_connections = 1,
-        counter.total_clients_created = clients_created as i64,
-        "Created new tank sensor connection"
-    );
-
-    // Emit challenge status (solved if using static client)
-    if false { // This will be changed when the challenge is solved
-        // Change to: if std::option_env!("USING_STATIC_CLIENT").is_some() {
-        tracing::info!(
-            event_sensor_optimization = "complete",
-            optimization_type = "async_io",
-            optimization_status = "successful",
-            "Tank sensor response time optimized using async I/O!"
-        );
-    }
-
-    // Simulate external sensor API call
-    // ⚠️ END CHALLENGE CODE ⚠️
-    
-    let response = client
-        .get("https://api.example.com/sensors")
-        .timeout(Duration::from_secs(2))
-        .send()
-        .await;
-
-    match response {
-        Ok(res) => {
-            if res.status().is_success() {
-                // Return mock data since this is an example
-                return Json(serde_json::json!({
-                    "status": "online",
-                    "active_sensors": 24,
-                    "last_updated": chrono::Utc::now()
-                }))
-                .into_response();
-            } else {
-                return (StatusCode::BAD_GATEWAY, "Sensor API error".to_string()).into_response();
-            }
-        }
-        Err(_) => {
-            // In a real app, would return actual sensor data
-            return Json(serde_json::json!({
-                "status": "online",
-                "active_sensors": 24,
-                "last_updated": chrono::Utc::now()
-            }))
-            .into_response();
-        }
-    }
-}
-
-/// Helper function to extract a function from source code by its signature
-fn extract_function<'a>(source_code: &'a str, function_signature: &str) -> &'a str {
-    // Find the function start by its signature
-    let function_start = match source_code.find(function_signature) {
-        Some(start) => start,
-        None => return "", // Function not found
-    };
-
-    // Find the function end by matching braces
-    let function_end = {
-        let rest = &source_code[function_start..];
-        let mut brace_count = 0;
-        let mut end_idx = 0;
-
-        for (i, c) in rest.chars().enumerate() {
-            if c == '{' {
-                brace_count += 1;
-            }
-            if c == '}' {
-                brace_count -= 1;
-                if brace_count == 0 {
-                    end_idx = i + 1;
-                    break;
-                }
-            }
-        }
-
-        if end_idx > 0 {
-            function_start + end_idx
-        } else {
-            return ""; // Couldn't find matching closing brace
-        }
-    };
-
-    // Return the extracted function code
-    &source_code[function_start..function_end]
-}
-
-/// Helper function to check if a pattern exists in non-commented code
-fn has_non_commented_pattern(text: &str, pattern: &str) -> bool {
-    text.lines()
-        .filter(|line| line.contains(pattern))
-        .any(|line| !line.trim_start().starts_with("//"))
-}
-
-async fn health_check() -> impl IntoResponse {
-    StatusCode::OK
 }

@@ -93,13 +93,6 @@ cd services/aqua-monitor
 shuttle logs --latest
 ```
 
-You can also stream logs in real-time to see incoming requests and debug issues:
-
-```bash
-# Stream logs in real-time
-shuttle logs --follow
-```
-
 ### 4. Testing Your Deployed Services
 
 Verify that all services are running and accessible:
@@ -285,8 +278,8 @@ If your solution isn't being validated correctly:
 3. **Examine Logs**: Check the service logs for validation errors
 
 ```bash
-# Stream logs in real-time during validation
-shuttle logs --follow
+# Check logs after validation
+shuttle logs --latest
 ```
 
 ## 🏗️ System Architecture Details

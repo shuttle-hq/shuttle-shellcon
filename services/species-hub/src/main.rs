@@ -1,5 +1,7 @@
+mod challenges;
+
 use shuttle_axum::axum::{
-    extract::{Path, Query, State},
+    extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
     routing::get,
@@ -7,7 +9,9 @@ use shuttle_axum::axum::{
 };
 // CORS removed - managed by frontend
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sqlx::{PgPool, Row};
+use std::fs;
 use tracing;
 use thiserror::Error;
 
@@ -126,136 +130,17 @@ async fn axum(
     
     // Build router
     let router = Router::new()
-        .route("/api/species", get(get_species))
+        .route("/api/species", get(challenges::get_species))
         .route("/api/species/:id", get(get_species_by_id))
-        .route("/api/species/:species_id/feeding-schedule", get(get_feeding_schedule))
-        .route("/api/challenges/2/validate", get(validate_query_optimization))
+        .route("/api/species/:species_id/feeding-schedule", get(challenges::get_feeding_schedule))
+        .route(
+            "/api/challenges/2/validate",
+            get(validate_query_optimization),
+        )
         .route("/api/health", get(health_check))
         .with_state(state);
     
     Ok(router.into())
-}
-
-// ⚠️ CHALLENGE #2: DATABASE QUERY OPTIMIZATION ⚠️
-// This function uses a non-indexed LIKE query that's causing slow performance
-async fn get_species(
-    Query(params): Query<SpeciesQuery>,
-    State(state): State<AppState>,
-) -> Result<impl IntoResponse, ApiError> {
-    // Add request ID for correlation and timing
-    let request_id = uuid::Uuid::new_v4().to_string();
-    let start = std::time::Instant::now();
-    
-    // Create a non-nested span for species catalog search with request_id as context
-    let span = tracing::info_span!("species_catalog_search", %request_id);
-    let _guard = span.enter();
-    
-    // Log operation start with search params
-    tracing::info!(
-        request_id = %request_id,
-        operation = "species_catalog_search",
-        search_by_name = params.name.is_some(),
-        search_by_scientific_name = params.scientific_name.is_some(),
-        "Starting species catalog search"
-    );
-    
-    // Validate query parameters
-    if let Some(name) = &params.name {
-        if name.len() < 2 {
-            return Err(ApiError::InvalidQuery("Name search term must be at least 2 characters".to_string()));
-        }
-    }
-    
-    if let Some(scientific_name) = &params.scientific_name {
-        if scientific_name.len() < 2 {
-            return Err(ApiError::InvalidQuery("Scientific name search term must be at least 2 characters".to_string()));
-        }
-    }
-    
-    // Using case-sensitive query with LIKE (non-optimized)
-    // This requires a full table scan and doesn't utilize indexes effectively
-    let species = if let Some(name) = &params.name {
-        // Use runtime query with LIKE for case-sensitive search
-        sqlx::query("SELECT * FROM species WHERE name ILIKE $1")
-            .bind(format!("%{}%", name))
-            .map(|row: sqlx::postgres::PgRow| {
-                Species {
-                    id: row.get("id"),
-                    name: row.get("name"),
-                    scientific_name: row.get("scientific_name"),
-                    description: row.get("description"),
-                    min_temperature: row.get("min_temperature"),
-                    max_temperature: row.get("max_temperature"),
-                    min_ph: row.get("min_ph"),
-                    max_ph: row.get("max_ph"),
-                    diet_type: row.get("diet_type"),
-                }
-            })
-            .fetch_all(&state.pool)
-            .await
-            .map_err(ApiError::Database)?
-    } else if let Some(scientific_name) = &params.scientific_name {
-        sqlx::query("SELECT * FROM species WHERE scientific_name ILIKE $1")
-            .bind(format!("%{}%", scientific_name))
-            .map(|row: sqlx::postgres::PgRow| {
-                Species {
-                    id: row.get("id"),
-                    name: row.get("name"),
-                    scientific_name: row.get("scientific_name"),
-                    description: row.get("description"),
-                    min_temperature: row.get("min_temperature"),
-                    max_temperature: row.get("max_temperature"),
-                    min_ph: row.get("min_ph"),
-                    max_ph: row.get("max_ph"),
-                    diet_type: row.get("diet_type"),
-                }
-            })
-            .fetch_all(&state.pool)
-            .await
-            .map_err(ApiError::Database)?
-    } else {
-        sqlx::query("SELECT * FROM species LIMIT 100")
-            .map(|row: sqlx::postgres::PgRow| {
-                Species {
-                    id: row.get("id"),
-                    name: row.get("name"),
-                    scientific_name: row.get("scientific_name"),
-                    description: row.get("description"),
-                    min_temperature: row.get("min_temperature"),
-                    max_temperature: row.get("max_temperature"),
-                    min_ph: row.get("min_ph"),
-                    max_ph: row.get("max_ph"),
-                    diet_type: row.get("diet_type"),
-                }
-            })
-            .fetch_all(&state.pool)
-            .await
-            .map_err(ApiError::Database)?
-    };
-    // ⚠️ END CHALLENGE CODE ⚠️
-
-    // Calculate query time
-    let query_time = start.elapsed().as_millis();
-    
-    // Log detailed performance metrics
-    tracing::info!(
-        request_id = %request_id,
-        operation = "species_catalog_search",
-        operation_status = if query_time < 50 { "optimized" } else { "standard" },
-        db_query_time_ms = query_time as f64,
-        db_rows_returned = species.len(),
-        db_query_type = "species_search",
-        search_term = params.name.as_deref().unwrap_or_else(|| params.scientific_name.as_deref().unwrap_or("")),
-        "Species catalog search completed"
-    );
-    
-    // If no species are found, we might want to return a specific error
-    // In this case we'll return empty results, but you could also:
-    // if species.is_empty() {
-    //     return Err(ApiError::SpeciesNotFound("No species matched your search criteria".to_string()));
-    // }
-    
-    Ok(Json(species))
 }
 
 async fn get_species_by_id(
@@ -335,144 +220,6 @@ async fn get_species_by_id(
     }
 }
 
-// This function needs improved error handling for robustness
-async fn get_feeding_schedule(
-    Path(species_id): Path<i32>,
-    Query(params): Query<FeedingScheduleParams>,
-    State(state): State<AppState>,
-) -> Result<impl IntoResponse, ApiError> {
-    // Add request ID for correlation
-    let request_id = uuid::Uuid::new_v4().to_string();
-    let start = std::time::Instant::now();
-    
-    // Create a span with request ID context to avoid nesting issues
-    let span = tracing::info_span!("feeding_schedule_generator", %request_id);
-    let _guard = span.enter();
-    
-    tracing::info!(
-        request_id = %request_id,
-        species_id = species_id,
-        tank_id = params.tank_id.as_deref().unwrap_or("default"),
-        custom_diet = params.custom_diet.as_deref().unwrap_or("standard"),
-        operation = "feeding_schedule_generation",
-        "Starting feeding schedule generation"
-    );
-    
-    // Validate species ID
-    if species_id <= 0 {
-        return Err(ApiError::InvalidQuery(format!("Invalid species ID: {}", species_id)));
-    }
-    
-    // Get species info first - with proper error handling
-    let species = sqlx::query("SELECT * FROM species WHERE id = $1")
-        .bind(species_id)
-        .map(|row: sqlx::postgres::PgRow| {
-            Species {
-                id: row.get("id"),
-                name: row.get("name"),
-                scientific_name: row.get("scientific_name"),
-                description: row.get("description"),
-                min_temperature: row.get("min_temperature"),
-                max_temperature: row.get("max_temperature"),
-                min_ph: row.get("min_ph"),
-                max_ph: row.get("max_ph"),
-                diet_type: row.get("diet_type"),
-            }
-        })
-        .fetch_optional(&state.pool)
-        .await
-        .map_err(|e| {
-            tracing::error!(error.message = %e, "Database error when fetching species");
-            ApiError::Database(e)
-        })?;
-    
-    // Use the ? operator with our custom ApiError
-    let species = species.ok_or_else(|| {
-        ApiError::SpeciesNotFound(format!("Species with ID {} not found", species_id))
-    })?;
-    
-    // If tank_id is provided, fetch tank information from our local tanks table
-    let tank_type = if let Some(tank_id) = &params.tank_id {
-        let tank = sqlx::query_as::<_, Tank>("SELECT * FROM tanks WHERE id = $1")
-            .bind(tank_id)
-            .fetch_optional(&state.pool)
-            .await
-            .map_err(|e| {
-                tracing::error!(error.message = %e, "Database error when fetching tank");
-                ApiError::Database(e)
-            })?;
-        
-        // If tank exists, use its type; otherwise, use default
-        tank.map(|t| t.tank_type)
-    } else {
-        None
-    };
-    
-    // Calculate feeding schedule based on species and tank_type
-    let schedule = calculate_feeding_schedule(&species, &params, tank_type);
-    
-    // Check if challenge is solved based on elapsed time
-    let elapsed = start.elapsed().as_millis();
-    if elapsed < 100 {
-        tracing::info!(
-            event.challenge_solved = "error_handling",
-            challenge.id = 3,
-            challenge.status = "solved",
-            "Challenge #3 Solved: Error handling implemented!"
-        );
-    }
-    
-    // Log and return
-    tracing::info!(
-        request_id = %request_id,
-        species_id = species.id,
-        species_name = %species.name,
-        feeding_times_per_day = schedule.feeding_times.len(),
-        food_type = %schedule.food_type,
-        schedule_calc_time_ms = elapsed as f64,
-        operation_status = "success",
-        "Feeding schedule generation completed"
-    );
-    
-    Ok(Json(schedule))
-}
-
-fn calculate_feeding_schedule(species: &Species, params: &FeedingScheduleParams, tank_type: Option<String>) -> FeedingSchedule {
-    // Use custom diet if provided
-    let food_type = if let Some(diet) = &params.custom_diet {
-        diet.clone()
-    } else {
-        match species.diet_type.as_str() {
-            "carnivore" => "bloodworms".to_string(),
-            "herbivore" => "algae wafers".to_string(),
-            "filter feeder" => "phytoplankton".to_string(),
-            _ => "flake food".to_string(),
-        }
-    };
-    
-    // Adjust feeding times based on tank_type from our local database
-    let feeding_times = if let Some(tank_type) = tank_type {
-        match tank_type.as_str() {
-            "reef" => vec!["07:00".to_string(), "12:00".to_string(), "17:00".to_string()],
-            "nano" => vec!["09:00".to_string()],
-            "community" => vec!["08:00".to_string(), "16:00".to_string()],
-            _ => vec!["08:00".to_string(), "16:00".to_string()] // Default schedule
-        }
-    } else {
-        vec!["08:00".to_string(), "16:00".to_string()]
-    };
-    
-    // Calculate amount based on species parameters
-    let amount_grams = (species.min_temperature + species.max_temperature) / 10.0;
-    
-    FeedingSchedule {
-        species_id: species.id,
-        feeding_times,
-        food_type,
-        amount_grams,
-    }
-}
-
 async fn health_check() -> impl IntoResponse {
     // Create a span for species database health check
     let span = tracing::info_span!("species_database_health");
@@ -480,15 +227,14 @@ async fn health_check() -> impl IntoResponse {
     StatusCode::OK
 }
 
+// Note: Rate limiting functionality would be implemented here in a real system
+
 /// Validates the implementation of Challenge #2: Query Optimization
 async fn validate_query_optimization(
     State(_state): State<AppState>,
 ) -> impl IntoResponse {
     tracing::info!("Starting validation for Challenge #2: Query Optimization");
     
-    use serde_json::json;
-    use std::fs;
-
     // Create a request ID for correlation in logs
     let request_id = uuid::Uuid::new_v4().to_string();
     
@@ -503,7 +249,7 @@ async fn validate_query_optimization(
         "Current working directory for validation"
     );
     
-    let source_path = current_dir.join("src/main.rs");
+    let source_path = current_dir.join("src/challenges.rs"); // Updated to look at challenges.rs
     
     // Log the full source path for debugging
     tracing::info!(
@@ -574,34 +320,26 @@ async fn validate_query_optimization(
     let name_uses_like = challenge_code.contains("WHERE name LIKE $1");
     let scientific_name_uses_like = challenge_code.contains("WHERE scientific_name LIKE $1");
     
-    tracing::info!(
-        request_id = %request_id,
-        name_uses_like = name_uses_like,
-        scientific_name_uses_like = scientific_name_uses_like,
-        "LIKE check results in challenge code"
-    );
-    
-    // The challenge is completed only if both queries use ILIKE within the challenge section
+    // Build the validation result - if both uses_ilike flags are true, validation passes
     let is_valid = name_uses_ilike && scientific_name_uses_ilike;
     
-    tracing::info!(
-        request_id = %request_id,
-        solution_valid = is_valid,
-        "Challenge #2 validation completed"
-    );
+    // If still using LIKE instead of ILIKE, fail validation
+    let still_using_like = name_uses_like || scientific_name_uses_like;
     
     // Build a standardized response following the same format as other challenges
     let response = json!({
         "valid": is_valid,
         "message": if is_valid {
-            "Solution correctly implemented! Database queries are now optimized."
+            "Solution correctly implemented! Queries are now optimized for case-insensitive searches."
+        } else if still_using_like {
+            "Solution validation failed. You're still using case-sensitive LIKE instead of ILIKE for some queries."
         } else {
-            "Solution validation failed. Please implement ILIKE queries for both name and scientific_name searches."
+            "Solution validation failed. Make sure to use ILIKE for all queries to optimize case-insensitive searches."
         },
         "system_component": {
             "name": "Species Database",
             "description": if is_valid {
-                "Species database search is now optimized for better performance"
+                "Species database search is now optimized"
             } else {
                 "Species database search is experiencing slowdowns"
             },
