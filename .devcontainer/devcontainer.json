@@ -1,24 +1,13 @@
 {
   "name": "ShellCon Aquarium System",
   "image": "mcr.microsoft.com/devcontainers/rust:latest",
-  "features": {
-    "ghcr.io/devcontainers/features/node:1": {
-      "version": "lts"
-    },
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
-    "ghcr.io/devcontainers/features/postgres:1": {
-      "version": "latest"
-    }
-  },
+  "features": {},
   "customizations": {
     "vscode": {
       "extensions": [
         "rust-lang.rust-analyzer",
         "tamasfe.even-better-toml",
         "vadimcn.vscode-lldb",
-        "dbaeumer.vscode-eslint",
-        "esbenp.prettier-vscode",
-        "ms-azuretools.vscode-docker",
         "rangav.vscode-thunder-client"
       ],
       "settings": {
@@ -34,25 +23,6 @@
       }
     }
   },
-  "postCreateCommand": "curl -sSf https://docs.shuttle.dev/install.sh | sh && cd frontend && npm install && echo 'export DATABASE_URL=postgres://postgres:postgres@localhost:5432/species_hub' >> ~/.bashrc",
-  "forwardPorts": [8000, 8001, 8002, 5173],
-  "portsAttributes": {
-    "8000": {
-      "label": "aqua-brain",
-      "onAutoForward": "notify"
-    },
-    "8001": {
-      "label": "aqua-monitor",
-      "onAutoForward": "notify"
-    },
-    "8002": {
-      "label": "species-hub",
-      "onAutoForward": "notify"
-    },
-    "5173": {
-      "label": "frontend",
-      "onAutoForward": "notify"
-    }
-  },
+
   "remoteUser": "vscode"
 }
