@@ -21,6 +21,7 @@ The Smart Aquarium System consists of three backend microservices and a separate
 
 ### Frontend Application
 The frontend application is available in a separate repository at [shuttle-shellcon-frontend](https://github.com/shuttle-hq/shuttle-shellcon-frontend). The UI provides:
+- A description of the challenges to solve (They can also be found in this repository under the `challenges` folder)
 - Interactive challenge validation
 - Detailed lecture materials for each challenge
 - Visual feedback on your solutions
