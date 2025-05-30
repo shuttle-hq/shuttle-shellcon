@@ -3,7 +3,7 @@ mod challenges;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use shuttle_axum::axum::{
-    extract::{Path, State},
+    extract::State,
     http::StatusCode,
     response::IntoResponse,
     routing::get,
@@ -115,7 +115,7 @@ async fn axum(#[shuttle_shared_db::Postgres] pool: PgPool) -> shuttle_axum::Shut
     // Build router
     let router = Router::new()
         .route("/api/tanks", get(get_all_tanks))
-        .route("/api/tanks/:tank_id/readings", get(get_tank_readings))
+        .route("/api/tanks/:tank_id/readings", get(challenges::get_tank_readings))
         .route(
             "/api/challenges/1/validate",
             get(validate_challenge_solution),
@@ -143,126 +143,7 @@ async fn get_all_tanks(State(state): State<AppState>) -> Result<impl IntoRespons
     Ok(Json(tank_ids))
 }
 
-// This function has a blocking operation that's causing high latency
-async fn get_tank_readings(
-    Path(tank_id): Path<String>,
-    State(state): State<AppState>,
-) -> Result<impl IntoResponse, ApiError> {
-    // Create a span for the entire request timing
-    let request_span = tracing::info_span!("tank_readings_request");
-    let _request_guard = request_span.enter();
 
-    // Add request ID for correlation and include tank_id in all logs
-    let request_id = uuid::Uuid::new_v4().to_string();
-
-    // Start timing the overall request
-    let start = std::time::Instant::now();
-
-    tracing::info!(
-        request_id = %request_id,
-        tank_id = %tank_id,
-        operation = "get_tank_readings",
-        "Processing tank readings request"
-    );
-
-    // ⚠️ CHALLENGE #1: ASYNC I/O ⚠️
-    // The aquarium monitoring system needs to read tank configuration settings frequently.
-    // Your task: Implement asynchronous file I/O to improve performance.
-
-    // Create a span specifically for file I/O operations
-    let io_span = tracing::info_span!("file_io_operation");
-    let _io_guard = io_span.enter();
-
-    // Blocking implementation
-    let io_start = std::time::Instant::now();
-
-    // Read tank configuration file using blocking I/O
-    let config = std::fs::read_to_string("./config/tank_settings.json")
-        .unwrap_or_else(|_| "{}".to_string());
-    // Simulate additional I/O latency in the blocking implementation
-    std::thread::sleep(std::time::Duration::from_millis(100));
-
-    // Parse summarized tank settings
-    let settings: TankSettingsSummary = serde_json::from_str(&config).unwrap_or_default();
-
-    let io_duration = io_start.elapsed().as_millis();
-    tracing::info!(
-        request_id = %request_id,
-        tank_id = %tank_id,
-        io_duration_ms = io_duration,
-        "Tank configuration file I/O completed"
-    );
-    // ⚠️ END CHALLENGE CODE ⚠️
-
-    // First, check if the tank exists
-    if tank_id.is_empty() {
-        tracing::warn!("Empty tank ID provided");
-        return Err(ApiError::TankNotFound("empty tank ID".to_string()));
-    }
-
-    // Async database query
-    tracing::debug!("Starting database query");
-    let db_start = std::time::Instant::now();
-    let readings = sqlx::query_as::<_, TankReading>(
-        "SELECT * FROM tank_readings WHERE tank_id = $1 ORDER BY timestamp DESC LIMIT 10",
-    )
-    .bind(&tank_id)
-    .fetch_all(&state.pool)
-    .await
-    // Propagate database errors
-    .map_err(ApiError::Database)?;
-
-    let db_duration = db_start.elapsed().as_millis();
-    tracing::debug!(
-        request_id = %request_id,
-        tank_id = %tank_id,
-        db_duration_ms = db_duration,
-        db_rows_returned = readings.len(),
-        "Tank readings database query completed"
-    );
-
-    // If no readings found, you could return a specialized error
-    if readings.is_empty() {
-        tracing::info!(
-            request_id = %request_id,
-            tank_id = %tank_id,
-            data_found = false,
-            "No sensor readings found for tank"
-        );
-        // For this example, we'll just return empty results
-        // But in a real app, you might want to return a specific error:
-        // return Err(ApiError::TankNotFound(format!("No readings for tank {}", tank_id)));
-    }
-
-    // Calculate the actual request duration
-    let elapsed = start.elapsed().as_millis() as f64;
-
-    // Custom metric showing request duration
-    tracing::info!(
-        request_id = %request_id,
-        tank_id = %tank_id,
-        request_duration_ms = elapsed,
-        api_endpoint = "tank_readings",
-        io_duration_ms = io_duration,
-        db_duration_ms = db_duration,
-        data_points_retrieved = readings.len(),
-        operation_status = "success",
-        "Tank environmental readings retrieved"
-    );
-
-    // Create a simplified response with readings, settings, and minimal metadata
-    let response = serde_json::json!({
-        "readings": readings,
-        "settings_summary": settings,
-        "metadata": {
-            "tank_id": tank_id,
-            "count": readings.len(),
-            "latency_ms": elapsed  // Only include total request time for the frontend challenge
-        }
-    });
-
-    Ok(Json(response))
-}
 
 // Challenge functions and implementations moved to challenges.rs
 
@@ -283,8 +164,120 @@ async fn validate_challenge_solution(
         "Starting validation for Challenge #1: Async I/O"
     );
 
-    // Use environment variable to determine if async I/O is being used
-    let is_valid = std::env::var("USING_ASYNC_IO").is_ok();
+    // Get the file content to check implementation patterns
+    tracing::info!("Working directory: {:?}", std::env::current_dir());
+    
+    // Read the current source file
+    let current_file = std::file!();
+    let challenge_file = match fs::read_to_string(current_file) {
+        Ok(content) => content,
+        Err(e) => {
+            tracing::error!("Failed to read source file: {}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+                "valid": false,
+                "message": format!("Error reading source file: {}", e)
+            })));
+        }
+    };
+    
+    // Extract the challenge code between the markers (case insensitive and allowing for spacing variations)
+    // We look for both actual markers or comments mentioning them
+    let markers = [
+        "// ⚠️ CHALLENGE #1: ASYNC I/O ⚠️", 
+        "// CHALLENGE #1: ASYNC I/O",
+        "// Challenge 1: Async I/O",
+        "// Challenge 1",
+        "// CHALLENGE #1"
+    ];
+    
+    let end_markers = [
+        "// ⚠️ END CHALLENGE CODE ⚠️",
+        "// END CHALLENGE CODE",
+        "// End Challenge Code",
+        "// End Challenge 1",
+        "// END CHALLENGE #1"
+    ];
+    
+    let challenge_start = markers.iter()
+        .filter_map(|marker| challenge_file.find(marker))
+        .min();
+    
+    let challenge_end = end_markers.iter()
+        .filter_map(|marker| challenge_file.find(marker))
+        .min();
+    
+    let challenge_code = match (challenge_start, challenge_end) {
+        (Some(start), Some(end)) if start < end => {
+            &challenge_file[start..end]
+        },
+        _ => {
+            // If we can't find clear markers, just check the whole file
+            // This is more flexible but still validates the important parts
+            tracing::info!("Couldn't find clear challenge markers, checking whole file");
+            &challenge_file
+        }
+    };
+    
+    // Print a snippet of the extracted challenge code for debugging
+    let excerpt = if challenge_code.len() > 200 {
+        &challenge_code[0..200]
+    } else {
+        challenge_code
+    };
+    tracing::info!("Challenge code excerpt: {}", excerpt);
+    
+    // Function to check if a pattern exists in uncommented code
+    let is_uncommented = |pattern: &str| -> bool {
+        // Check each line for the pattern, ignoring commented lines
+        challenge_code.lines().any(|line| {
+            let trimmed = line.trim();
+            trimmed.contains(pattern) && !trimmed.starts_with("//")
+        })
+    };
+    
+    // Check for specific patterns
+    let has_tokio_fs = challenge_code.contains("tokio::fs");
+    let has_async_std_fs = challenge_code.contains("async_std::fs");
+    let has_await = challenge_code.contains(".await");
+    let has_read_to_string = challenge_code.contains("read_to_string");
+    let has_read_file = challenge_code.contains("read_file");
+    let has_thread_sleep = challenge_code.contains("thread::sleep");
+    let has_uncommented_thread_sleep = is_uncommented("std::thread::sleep");
+    let has_std_fs_read = challenge_code.contains("std::fs::read");
+    let has_uncommented_std_fs_read = is_uncommented("std::fs::read");
+    
+    tracing::info!(
+        request_id = %request_id,
+        has_tokio_fs = has_tokio_fs,
+        has_async_std_fs = has_async_std_fs,
+        has_await = has_await, 
+        has_read_to_string = has_read_to_string,
+        has_read_file = has_read_file,
+        has_thread_sleep = has_thread_sleep,
+        has_uncommented_thread_sleep = has_uncommented_thread_sleep,
+        has_std_fs_read = has_std_fs_read,
+        has_uncommented_std_fs_read = has_uncommented_std_fs_read,
+        "Detailed pattern detection"
+    );
+    
+    // Check for async file operations (multiple possible implementations)
+    let uses_async_io = has_tokio_fs || 
+                       has_async_std_fs || 
+                       (has_await && (has_read_to_string || has_read_file));
+    
+    // Check for absence of blocking operations
+    let no_blocking_operations = !has_uncommented_thread_sleep && !has_uncommented_std_fs_read;
+    
+    // Log what we're finding in the challenge code
+    tracing::info!(
+        request_id = %request_id,
+        uses_async_io = uses_async_io,
+        no_blocking_operations = no_blocking_operations,
+        "Challenge code check results"
+    );
+    
+    // Both checks must pass for validation to succeed
+    let is_valid = uses_async_io && no_blocking_operations;
 
     // Create the response with appropriate feedback
     let response = json!({
@@ -388,16 +381,27 @@ async fn validate_resource_leak_solution(
     let has_static_client = source_code.contains("static HTTP_CLIENT") || 
                             source_code.contains("static CLIENT");
     
+    // Function to check if a pattern exists in uncommented code
+    let is_uncommented = |pattern: &str| -> bool {
+        // Check each line for the pattern, ignoring commented lines
+        challenge_code.lines().any(|line| {
+            let trimmed = line.trim();
+            trimmed.contains(pattern) && !trimmed.starts_with("//")
+        })
+    };
+    
     // Check for use of static client instead of creating new client
     let uses_static_client = challenge_code.contains("&*HTTP_CLIENT") || 
                              challenge_code.contains("HTTP_CLIENT.") ||
                              challenge_code.contains("&*CLIENT") ||
                              challenge_code.contains("CLIENT.");
     
-    // Check for absence of new client creation in challenge code
-    let no_new_client = !challenge_code.contains("Client::new()") || 
-                        (challenge_code.contains("Client::new()") && 
-                         challenge_code.contains("Lazy::new"));
+    // Check for absence of new client creation in uncommented code
+    let has_uncommented_new_client = is_uncommented("Client::new()") && 
+                                    !challenge_code.contains("Lazy::new");
+    
+    // No new client if either there's no Client::new() call at all, or it's only used with Lazy::new
+    let no_new_client = !has_uncommented_new_client;
     
     // Log what we're finding in the challenge code
     tracing::info!(

@@ -1,0 +1,1884 @@
+use shuttle_axum::axum::extract::{Path, Query, State};
+use shuttle_axum::axum::http::StatusCode;
+use shuttle_axum::axum::response::IntoResponse;
+use shuttle_axum::axum::routing::get;
+use shuttle_axum::axum::Json;
+use shuttle_axum::axum::Router;
+// CORS removed - managed by frontend
+use serde::{Deserialize, Serialize};
+// No unused imports
+use tracing;
+use thiserror::Error;
+use std::fs;
+use std::path::Path;
+
+// Function to return lecture content
+fn load_lecture(challenge_number: usize) -> String {
+    match challenge_number {
+        1 => "# Challenge 1: Async I/O Performance\n\nLearn how to make your Rust code more efficient with asynchronous I/O operations.".to_string(),
+        2 => "# Challenge 2: Database Optimization\n\nLearn how to optimize database queries with proper indexing techniques.".to_string(), 
+        3 => "# Challenge 3: Memory Optimization\n\nLearn how to reduce memory allocations by using static string references.".to_string(),
+        4 => "# Challenge 4: HTTP Client Optimization\n\nLearn how to create efficient HTTP clients using static instances.".to_string(),
+        _ => format!("# Lecture for Challenge #{} \n\nLecture content could not be loaded.", challenge_number)
+    }
+}
+
+// Import challenges module
+mod challenges;
+
+// Define a custom error type for better error handling
+#[derive(Debug, Error)]
+pub enum ApiError {
+    #[error("System status unavailable: {0}")]
+    SystemStatusUnavailable(String),
+    
+    #[error("Analysis failed: {0}")]
+    AnalysisFailed(String),
+    
+    #[error("Species data unavailable: {0}")]
+    SpeciesDataUnavailable(String),
+    
+    #[error("External service error: {0}")]
+    ExternalService(#[from] reqwest::Error),
+    
+    #[error("Internal server error: {0}")]
+    InternalError(String),
+}
+
+// Implement IntoResponse for our custom error type
+impl IntoResponse for ApiError {
+    fn into_response(self) -> shuttle_axum::axum::response::Response {
+        let (status, error_message) = match &self {
+            ApiError::SystemStatusUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
+            ApiError::AnalysisFailed(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            ApiError::SpeciesDataUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
+            ApiError::ExternalService(_) => (StatusCode::BAD_GATEWAY, "External service error".to_string()),
+            ApiError::InternalError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+        };
+        
+        // Log the error with structured fields
+        tracing::error!(
+            error.type = std::any::type_name::<Self>(),
+            error.message = %error_message,
+            error.status = %status.as_u16(),
+            "API error occurred"
+        );
+        
+        // Return status code and JSON error message
+        (status, Json(serde_json::json!({
+            "error": error_message,
+            "status": status.as_u16(),
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        }))).into_response()
+    }
+}
+
+#[derive(Clone)]
+struct AppState {}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct AnalysisResult {
+    tank_id: String,
+    species_id: i32,
+    timestamp: String,
+    temperature_status: &'static str,
+    ph_status: &'static str,
+    oxygen_status: &'static str,
+    feeding_status: &'static str,
+    overall_health: &'static str,
+    recommendations: Vec<&'static str>,
+}
+
+#[derive(Deserialize, Clone)]
+struct AnalysisParams {
+    tank_id: Option<String>,
+    species_id: Option<i32>,
+}
+
+// Define a custom error type for better error handling
+#[derive(Debug, Error)]
+pub enum ApiError {
+    #[error("System status unavailable: {0}")]
+    SystemStatusUnavailable(String),
+    
+    #[error("Analysis failed: {0}")]
+    AnalysisFailed(String),
+    
+    #[error("Species data unavailable: {0}")]
+    SpeciesDataUnavailable(String),
+    
+    #[error("External service error: {0}")]
+    ExternalService(#[from] reqwest::Error),
+    
+    #[error("Internal server error: {0}")]
+    InternalError(String),
+}
+
+// Implement IntoResponse for our custom error type
+impl IntoResponse for ApiError {
+    fn into_response(self) -> shuttle_axum::axum::response::Response {
+        let (status, error_message) = match &self {
+            ApiError::SystemStatusUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
+            ApiError::AnalysisFailed(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            ApiError::SpeciesDataUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, self.to_string()),
+            ApiError::ExternalService(_) => (StatusCode::BAD_GATEWAY, "External service error".to_string()),
+            ApiError::InternalError(_) => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+        };
+        
+        // Log the error with structured fields
+        tracing::error!(
+            error.type = std::any::type_name::<Self>(),
+            error.message = %error_message,
+            error.status = %status.as_u16(),
+            "API error occurred"
+        );
+        
+        // Return status code and JSON error message
+        (status, Json(serde_json::json!({
+            "error": error_message,
+            "status": status.as_u16(),
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        }))).into_response()
+    }
+}
+
+#[derive(Clone)]
+struct AppState {}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct AnalysisResult {
+    tank_id: String,
+    species_id: i32,
+    timestamp: String,
+    temperature_status: &'static str,
+    ph_status: &'static str,
+    oxygen_status: &'static str,
+    feeding_status: &'static str,
+    overall_health: &'static str,
+    recommendations: Vec<&'static str>,
+}
+
+#[derive(Deserialize, Clone)]
+struct AnalysisParams {
+    tank_id: Option<String>,
+    species_id: Option<i32>,
+}
+
+#[derive(Serialize)]
+struct ChallengeSolution {
+    code: String,
+    explanation: String,
+    lecture: String,
+}
+
+async fn get_current_challenge() -> impl IntoResponse {
+    // Create a span for tracking challenge metadata requests
+    let span = tracing::info_span!("challenge_metadata_request");
+    let _guard = span.enter();
+    let request_id = uuid::Uuid::new_v4().to_string();
+    
+    tracing::info!(
+        request_id = %request_id,
+        operation = "get_challenge_metadata",
+        "Retrieving challenge metadata"
+    );
+    
+    // Define detailed challenge information
+    let challenge_1_solution = ChallengeSolution {
+        code: r#"// Slow, blocking implementation
+async fn validate_tank_parameters() -> Result<bool, std::io::Error> {
+    // Blocking file I/O - thread cannot do anything else while waiting
+    let config = std::fs::read_to_string("tank_config.json")?;
+    
+    // Blocking sleep - wastes a thread for 100ms
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    
+    // Process config...
+    let is_valid = config.contains("valid_parameters");
+    
+    Ok(is_valid)
+}
+
+// After optimization: Async version
+async fn validate_tank_parameters() -> Result<bool, std::io::Error> {
+    // Async file I/O - thread can handle other tasks while waiting
+    let config = tokio::fs::read_to_string("tank_config.json").await?;
+    
+    // Async sleep - doesn't block the thread
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    
+    // Process config...
+    let is_valid = config.contains("valid_parameters");
+    
+    Ok(is_valid)
+}"#.to_string(),
+        explanation: "This solution replaces blocking I/O operations with asynchronous alternatives from Tokio. Instead of std::fs::read_to_string, it uses tokio::fs::read_to_string for non-blocking file operations. Similarly, std::thread::sleep is replaced with tokio::time::sleep. This allows the application to handle many more concurrent connections because threads aren't blocked waiting for I/O. The new implementation can process other requests while waiting for the file read or timer to complete.".to_string(),
+        lecture: load_lecture(1),
+    };
+    
+    let challenge_2_solution = ChallengeSolution {
+        code: r#"// Before: Using LIKE for case-insensitive search
+// This forces a full table scan - no index use
+SELECT * FROM species WHERE name LIKE '%seahorse%'
+
+// After: Using ILIKE with trigram index
+// First ensure index exists:
+CREATE INDEX IF NOT EXISTS species_name_trigram_idx ON species USING GIN (name gin_trgm_ops);
+
+// Then use ILIKE:
+SELECT * FROM species WHERE name ILIKE '%seahorse%'"#.to_string(),
+        explanation: "This solution optimizes database text search performance by creating a trigram index (GIN) and using PostgreSQL's ILIKE operator instead of LIKE. Trigram indexes break text into three-character segments that can be efficiently searched even with wildcards. ILIKE is case-insensitive by default and works well with these indexes. This approach can make text searches hundreds of times faster on large tables compared to using unindexed LIKE queries.".to_string(),
+        lecture: load_lecture(2),
+    };
+    
+    let challenge_3_solution = ChallengeSolution {
+        code: r#"// Before: Using String objects that allocate memory
+pub fn analyze_tank_conditions(temperature: f32, ph_level: f32) -> (String, String) {
+    let temp_status = if temperature > 26.0 {
+        String::from("warning")
+    } else {
+        String::from("normal")
+    };
+    
+    let ph_status = if ph_level < 6.5 || ph_level > 8.0 {
+        String::from("warning")
+    } else {
+        String::from("normal")
+    };
+    
+    (temp_status, ph_status)
+}
+
+// After: Using static string references to avoid allocation
+pub fn analyze_tank_conditions(temperature: f32, ph_level: f32) -> (&'static str, &'static str) {
+    let temp_status = if temperature > 26.0 {
+        "warning"
+    } else {
+        "normal"
+    };
+    
+    let ph_status = if ph_level < 6.5 || ph_level > 8.0 {
+        "warning"
+    } else {
+        "normal"
+    };
+    
+    (temp_status, ph_status)
+}"#.to_string(),
+        explanation: "This solution addresses memory usage by replacing dynamic String allocations with static string references (&'static str). When working with fixed, known string values, using references instead of creating new String objects for each function call significantly reduces memory allocations and improves performance. The &'static str type indicates that these string references have a 'static lifetime, meaning they live for the entire duration of the program, typically stored in the binary itself rather than on the heap.".to_string(),
+        lecture: load_lecture(3),
+    };
+    
+    let challenge_4_solution = ChallengeSolution {
+        code: r#"// Before: Creating a new client for every request
+// This causes resource leaks and excessive memory usage
+async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoResponse {
+    // Create a span for sensor status check
+    let span = tracing::info_span!("tank_sensor_status_check");
+    let _guard = span.enter();
+
+    // Start timing for performance logging
+    let _start = std::time::Instant::now();
+
+    // BAD: Creating a new client for every request
+    // This causes memory and resource leaks
+    let client = reqwest::Client::new();
+    
+    // Rest of the function remains the same
+    // but creates a new client every time
+}
+
+// After optimization: Using a static HTTP client
+use once_cell::sync::Lazy;
+use reqwest::Client;
+
+// Define a single static HTTP client that is created only once
+static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
+    Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .expect("Failed to build HTTP client")
+});
+
+async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoResponse {
+    // Create a span for sensor status check
+    let span = tracing::info_span!("tank_sensor_status_check");
+    let _guard = span.enter();
+
+    // Start timing for performance logging
+    let start = std::time::Instant::now();
+    
+    // Pretend this is a function that generates sensor status data
+    // for demo purposes, we'll simulate the data
+    let result = serde_json::json!([
+        {
+            "sensor_id": "T1001",
+            "name": "Temperature Sensor 1",
+            "status": "online",
+            "last_reading": 24.5,
+            "unit": "Celsius"
+        },
+        {
+            "sensor_id": "P2002",
+            "name": "pH Sensor 2",
+            "status": "online",
+            "last_reading": 7.2,
+            "unit": "pH"
+        },
+        {
+            "sensor_id": "O3003",
+            "name": "Oxygen Sensor 3",
+            "status": "warning",
+            "last_reading": 6.8,
+            "unit": "mg/L"
+        },
+    ]);
+    
+    // Log timing information
+    let elapsed = start.elapsed().as_millis() as f64;
+    tracing::info!(
+        operation = "sensor_status_check",
+        sensor_count = 3,
+        operation_duration_ms = elapsed,
+        operation_status = "success",
+        "Completed sensor status check"
+    );
+
+    Json(result)
+}
+
+#[shuttle_runtime::main]
+async fn axum() -> shuttle_axum::ShuttleAxum {
+    // Initialize state - no clients needed following our KISS architecture
+    let state = AppState {};
+    
+    // Build router
+    let router = Router::new()
+        .route("/api/analysis/tanks", get(get_all_tank_analysis))
+        .route("/api/analysis/tanks/:tank_id", get(get_tank_analysis_by_id))
+        .route("/api/challenges/current", get(get_current_challenge))
+        .route("/api/challenges/test/1", get(challenges::test_challenge_1))
+        .route("/api/challenges/3/validate", get(validate_memory_optimization))
+        // Challenge solution validation should be in the service where the implementation resides
+        // For Challenge #1, validation is done in the aqua-monitor service
+        .route("/api/health", get(health_check))
+        .with_state(state);
+    
+    Ok(router.into())
+}
+
+async fn health_check() -> impl IntoResponse {
+    StatusCode::OK
+}
+
+// Define a summary struct for collection response
+#[derive(Serialize)]
+struct TankSummary {
+    tank_id: String,
+    species_id: i32,
+    species_name: String,
+    overall_health: &'static str,
+    timestamp: String,
+}
+
+// Map species_id to species_name for the demo
+fn get_species_name(species_id: i32) -> String {
+    match species_id {
+        1 => "Neon Tetra ".to_string(),
+        2 => "Clownfish".to_string(),
+        3 => "Blue Tang ".to_string(),
+        4 => "Guppy".to_string(),
+        5 => "Betta".to_string(),
+        _ => format!("Unknown Species (ID: {})", species_id),
+    }
+}
+
+// Handler for all tanks analysis - returns summarized information
+async fn get_all_tank_analysis(
+    Query(params): Query<AnalysisParams>,
+    State(_state): State<AppState>,
+) -> impl IntoResponse {
+    // Create a span for tracking multi-tank environmental analysis
+    let span = tracing::info_span!("multi_tank_analysis");
+    let _guard = span.enter();
+    
+    // Add request ID for correlation and timing
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let start_time = std::time::Instant::now();
+    
+    tracing::info!(
+        request_id = %request_id,
+        operation = "multi_tank_analysis",
+        tanks_requested = "all",
+        "Starting multi-tank environmental analysis "
+    );
+    // Defined tank IDs in our system
+    let tank_ids = vec!["Tank-A1 ", "Tank-B2 ", "Tank-C3 "];
+    
+    // Create summary results for all defined tanks
+    let results: Vec<TankSummary> = tank_ids
+        .into_iter()
+        .map(|tank_id| {
+            let mut tank_params = params.clone();
+            tank_params.tank_id = Some(tank_id.to_string());
+            
+            // Get full analysis but only return summary
+            let full_analysis = challenges::get_analysis_result(tank_params);
+            
+            // Convert to summary
+            TankSummary {
+                tank_id: full_analysis.tank_id,
+                species_id: full_analysis.species_id,
+                species_name: get_species_name(full_analysis.species_id),
+                overall_health: full_analysis.overall_health,
+                timestamp: full_analysis.timestamp,
+            }
+        })
+        .collect();
+        
+    // Log timing information on completion
+    let elapsed = start_time.elapsed().as_millis() as f64;
+    tracing::info!(
+        request_id = %request_id,
+        operation = "multi_tank_analysis",
+        tanks_analyzed = results.len(),
+        analysis_duration_ms = elapsed,
+        operation_status = "success",
+        "Multi-tank environmental analysis completed "
+    );
+    
+    Json(results)
+}
+
+// Handler for single tank analysis by ID
+async fn get_tank_analysis_by_id(
+    State(_state): State<AppState>,
+    Path(tank_id): Path<String>,
+    Query(params): Query<AnalysisParams>,
+) -> impl IntoResponse {
+    // Create a span for tracking single tank environmental analysis
+    let span = tracing::info_span!("single_tank_analysis");
+    let _guard = span.enter();
+    
+    // Add request ID for correlation and timing
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let start_time = std::time::Instant::now();
+    
+    tracing::info!(
+        request_id = %request_id,
+        tank_id = %tank_id,
+        operation = "single_tank_analysis",
+        "Starting tank environmental analysis "
+    );
+    // Override tank_id from path parameter
+    let mut tank_params = params;
+    // Clone tank_id directly in the assignment to keep the original for logging
+    tank_params.tank_id = Some(tank_id.clone());
+    
+    // Get single tank analysis
+    let result = challenges::get_analysis_result(tank_params);
+    
+    // Log timing information on completion
+    let elapsed = start_time.elapsed().as_millis() as f64;
+    tracing::info!(
+        request_id = %request_id,
+        tank_id = %tank_id,
+        analysis_duration_ms = elapsed,
+        overall_health = %result.overall_health,
+        operation_status = "success",
+        "Tank environmental analysis completed "
+    );
+    
+    Json(result)
+}
+
+/// Validates the implementation of Challenge #3: Memory Optimization
+async fn validate_memory_optimization(
+    State(_state): State<AppState>,
+) -> impl IntoResponse {
+    tracing::info!("Starting validation for Challenge #3: Memory Optimization ");
+    
+    use serde_json::json;
+    use std::fs;
+
+    // Create a request ID for correlation in logs
+    let request_id = uuid::Uuid::new_v4().to_string();
+    
+    // Extract just the challenge code section using the challenge markers
+    let source_path = std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join("src/challenges.rs");
+    
+    // Read the source code file
+    let source_code = match fs::read_to_string(&source_path) {
+        Ok(content) => content,
+        Err(e) => {
+            tracing::error!(
+                request_id = %request_id,
+                error = %e,
+                "Failed to read source code for validation "
+            );
+            // If we can't read the source, assume the challenge is not completed
+            return (StatusCode::OK, Json(json!({
+                "valid": false,
+                "message": "Validation failed: Unable to verify implementation.",
+                "system_component": {
+                    "name": "Analysis Engine",
+                    "description": "Analysis engine is experiencing high memory usage",
+                    "status": "degraded"
+                }
+            })));
+        }
+    };
+    
+    // Find the challenge section boundaries
+    let challenge_start = source_code.find("// ⚠️ CHALLENGE #3: MEMORY OPTIMIZATION ⚠️");
+    let challenge_end = source_code.find("// ⚠️ END CHALLENGE CODE ⚠️");
+    
+    // Check if we found the challenge section boundaries
+    if challenge_start.is_none() || challenge_end.is_none() {
+        tracing::error!(
+            request_id = %request_id,
+            "Could not find challenge section boundaries in source code"
+        );
+        return (StatusCode::OK, Json(json!({
+            "valid": false,
+            "message": "Validation failed: Unable to verify implementation.",
+            "system_component": {
+                "name": "Analysis Engine",
+                "description": "Analysis engine is experiencing high memory usage",
+                "status": "degraded"
+            }
+        })));
+    }
+    
+    // Extract just the challenge code section
+    let challenge_code = &source_code[challenge_start.unwrap()..challenge_end.unwrap() + "// ⚠️ END CHALLENGE CODE ⚠️".len()];
+    
+    // Check for the use of static string references
+    // Count the number of .to_string() calls in the challenge code
+    let to_string_count = challenge_code.matches(".to_string()").count();
+    
+    // Check for the use of &str instead of String
+    let uses_str_type = challenge_code.contains("&str") || challenge_code.contains("&'static str");
+    
+    // Log what we're finding in the challenge code
+    tracing::info!(
+        request_id = %request_id,
+        to_string_count = to_string_count,
+        uses_str_type = uses_str_type,
+        "Challenge code check results"
+    );
+    
+    // The challenge is completed if the number of .to_string() calls is significantly reduced
+    // and &str type is used instead
+    let is_valid = to_string_count < 10 && uses_str_type;
+    
+    tracing::info!(
+        request_id = %request_id,
+        solution_valid = is_valid,
+        "Challenge #3 validation completed"
+    );
+    
+    // Build a standardized response following the same format as other challenges
+    let response = json!({
+        "valid": is_valid,
+        "message": if is_valid {
+            "Solution correctly implemented! Memory usage is now optimized."
+        } else {
+            "Solution validation failed. Please optimize memory usage by using static string references instead of creating new String objects."
+        },
+        "system_component": {
+            "name": "Analysis Engine",
+            "description": if is_valid {
+                "Analysis engine memory usage is now optimized"
+            } else {
+                "Analysis engine is experiencing high memory usage"
+            },
+            "status": if is_valid { "normal" } else { "degraded" }
+        }
+    });
+    
+    (StatusCode::OK, Json(response))
+}
+
+
+#[derive(Serialize)]
+struct ChallengeSolution {
+    code: String,
+    explanation: String,
+    lecture: String,
+}
+
+async fn get_current_challenge() -> impl IntoResponse {
+    // Create a span for tracking challenge metadata requests
+    let span = tracing::info_span!("challenge_metadata_request");
+    let _guard = span.enter();
+    let request_id = uuid::Uuid::new_v4().to_string();
+    
+    tracing::info!(
+        request_id = %request_id,
+        operation = "get_challenge_metadata",
+        "Providing challenge metadata"
+    );
+    
+    // Define detailed challenge information
+    let challenge_1_solution = ChallengeSolution {
+        code: r#"// Slow, blocking implementation
+async fn validate_tank_parameters() -> Result<bool, std::io::Error> {
+    // Blocking file I/O - thread cannot do anything else while waiting
+    let config = std::fs::read_to_string("tank_config.json")?;
+    
+    // Blocking sleep - wastes a thread for 100ms
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    
+    // Process config...
+    let is_valid = config.contains("valid_parameters");
+    
+    Ok(is_valid)
+}
+
+// After optimization: Async version
+async fn validate_tank_parameters() -> Result<bool, std::io::Error> {
+    // Async file I/O - thread can handle other tasks while waiting
+    let config = tokio::fs::read_to_string("tank_config.json").await?;
+    
+    // Async sleep - doesn't block the thread
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    
+    // Process config...
+    let is_valid = config.contains("valid_parameters");
+    
+    Ok(is_valid)
+}"#.to_string(),
+        explanation: "This solution replaces blocking I/O operations with asynchronous alternatives from Tokio. Instead of std::fs::read_to_string, it uses tokio::fs::read_to_string for non-blocking file operations. Similarly, std::thread::sleep is replaced with tokio::time::sleep. This allows the application to handle many more concurrent connections because threads aren't blocked waiting for I/O. The new implementation can process other requests while waiting for the file read or timer to complete.".to_string(),
+        lecture: load_lecture(1),
+    };
+    
+    let challenge_2_solution = ChallengeSolution {
+        code: r#"// Before: Inefficient LIKE queries with case-sensitivity
+
+// After: Using ILIKE with trigram index
+// First ensure index exists:
+CREATE INDEX IF NOT EXISTS species_name_trigram_idx ON species USING GIN (name gin_trgm_ops);
+
+// Then use ILIKE:
+SELECT * FROM species WHERE name ILIKE '%seahorse%'"#.to_string(),
+        explanation: "This solution optimizes database text search performance by creating a trigram index (GIN) and using PostgreSQL's ILIKE operator instead of LIKE. Trigram indexes break text into three-character segments that can be efficiently searched even with wildcards. ILIKE is case-insensitive by default and works well with these indexes. This approach can make text searches hundreds of times faster on large tables compared to using unindexed LIKE queries.".to_string(),
+        lecture: load_lecture(2),
+    };
+    
+    let challenge_3_solution = ChallengeSolution {
+        code: r#"// Before: Using String objects that allocate memory
+pub fn analyze_tank_conditions(temperature: f32, ph_level: f32) -> (String, String) {
+    let temp_status = if temperature > 26.0 {
+        String::from("warning")
+    } else {
+        String::from("normal")
+    };
+    
+    let ph_status = if ph_level < 6.5 || ph_level > 8.0 {
+        String::from("warning")
+    } else {
+        String::from("normal")
+    };
+    
+    (temp_status, ph_status)
+}
+
+// After: Using static string references to avoid allocation
+pub fn analyze_tank_conditions(temperature: f32, ph_level: f32) -> (&'static str, &'static str) {
+    let temp_status = if temperature > 26.0 {
+        "warning"
+    } else {
+        "normal"
+    };
+    
+    let ph_status = if ph_level < 6.5 || ph_level > 8.0 {
+        "warning"
+    } else {
+        "normal"
+    };
+    
+    (temp_status, ph_status)
+}"#.to_string(),
+        explanation: "This solution addresses memory usage by replacing dynamic String allocations with static string references (&'static str). When working with fixed, known string values, using references instead of creating new String objects for each function call significantly reduces memory allocations and improves performance. The &'static str type indicates that these string references have a 'static lifetime, meaning they live for the entire duration of the program, typically stored in the binary itself rather than on the heap.".to_string(),
+        lecture: load_lecture(3),
+    };
+    
+    let challenge_4_solution = ChallengeSolution {
+        code: r#"// Before: Creating a new client for every request
+// This causes resource leaks and excessive memory usage
+async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoResponse {
+    // Create a span for sensor status check
+    let span = tracing::info_span!("tank_sensor_status_check");
+    let _guard = span.enter();
+
+    // Start timing for performance logging
+    let _start = std::time::Instant::now();
+
+    // BAD: Creating a new client for every request
+    // This causes memory and resource leaks
+    let client = reqwest::Client::new();
+    
+    // Rest of the function remains the same
+    // but creates a new client every time
+}
+
+// After optimization: Using a static HTTP client
+use once_cell::sync::Lazy;
+use reqwest::Client;
+
+// Define a single static HTTP client that is created only once
+static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
+    Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .expect("Failed to build HTTP client")
+});
+
+async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoResponse {
+    // Create a span for sensor status check
+    let span = tracing::info_span!("tank_sensor_status_check");
+    let _guard = span.enter();
+
+    // Start timing for performance logging
+    let _start = std::time::Instant::now();
+
+    // GOOD: Use the shared static client
+    // No new client is created here
+    let client = &HTTP_CLIENT;
+    
+    // Rest of the function remains the same
+    // but now uses the shared client
+}"#.to_string(),
+        explanation: "This solution addresses the resource leak by creating a static HTTP client using lazy_static or once_cell instead of creating a new client for every request. The static client is initialized only once and reused across all requests, significantly reducing memory usage and resource consumption. HTTP clients are resource-intensive objects that maintain connection pools, TLS configurations, and DNS caches - creating a new one for each request wastes these resources and can cause memory leaks and performance degradation in high-traffic services.".to_string(),
+        lecture: load_lecture(4),
+    };
+
+    // Define challenge metadata for the current ongoing challenges
+    let challenges = vec![
+        Challenge {
+            id: 1,
+            name: "async-io",
+            title: "The Blocking Bottleneck",
+            description: "The tank parameter validation process is using blocking I/O operations, causing performance issues during peak usage. This is causing the monitoring system to miss critical water quality changes.",
+            hint: "Look for blocking I/O operations in the validate_tank_parameters function. You'll need to replace standard library functions with their asynchronous equivalents from the tokio crate. Pay special attention to file operations and sleep functions.",
+            service: "aqua-monitor",
+            file: "src/challenges.rs",
+            function: "validate_tank_parameters",
+            status: "degraded",
+            validation_endpoint: EndpointInfo {
+                service: "aqua-monitor",
+                url: "/api/challenges/1/validate",
+                method: "GET"
+            },
+            solution: challenge_1_solution
+        },
+        Challenge {
+            id: 2,
+            name: "database-optimization",
+            title: "The Slow Query",
+            description: "The species search functionality is extremely slow when users search for partial names. Database queries are taking too long, especially for text searches.",
+            hint: "The issue is with how text search is being performed in the database. Look at how the SQL query is constructed in the species_hub service. Consider using PostgreSQL's full-text search capabilities and appropriate indexing strategies.",
+            service: "species-hub",
+            file: "src/challenges.rs",
+            function: "search_species",
+            status: "degraded",
+            validation_endpoint: EndpointInfo {
+                service: "species-hub",
+                url: "/api/challenges/2/validate",
+                method: "GET"
+            },
+            solution: challenge_2_solution
+        },
+        Challenge {
+            id: 3,
+            name: "memory-optimization",
+            title: "The Memory Hog",
+            description: "The analysis engine is using excessive memory, particularly when calculating status reports for multiple tanks. The issue seems to be with how strings are handled.",
+            hint: "Examine how strings are created and returned in the tank analysis functions. Instead of creating new String instances for every status report, consider using static string references (&'static str) for fixed, known values.",
+            service: "aqua-brain",
+            file: "src/challenges.rs",
+            function: "analyze_tank_conditions",
+            status: "degraded",
+            validation_endpoint: EndpointInfo {
+                service: "aqua-brain",
+                url: "/api/challenges/3/validate",
+                method: "GET"
+            },
+            solution: challenge_3_solution
+        },
+        Challenge {
+            id: 4,
+            name: "resource-leak",
+            title: "The Leaky Connection",
+            description: "The sensor status API is creating a new HTTP client for every request, causing excessive resource usage and potential memory leaks.",
+            hint: "Look for where a new HTTP client is being created for each request in the get_sensor_status function. Creating HTTP clients is expensive! Each client maintains connection pools, TLS configurations, and system resources. To fix this, create a shared, static HTTP client that can be reused across all requests. Consider using lazy_static or once_cell to create a properly initialized static client.",
+            service: "aqua-monitor",
+            file: "src/challenges.rs",
+            function: "get_sensor_status",
+            status: "degraded",
+            validation_endpoint: EndpointInfo {
+                service: "aqua-monitor",
+                url: "/api/challenges/4/validate",
+                method: "GET"
+            },
+            solution: challenge_4_solution
+        }
+    ];
+    
+    // Return challenge metadata as JSON
+    Json(serde_json::json!({
+        "challenges": challenges,
+        "total": challenges.len(),
+        "solved": 0,
+    }))
+}
+
+#[shuttle_runtime::main]
+async fn axum() -> shuttle_axum::ShuttleAxum {
+    // Initialize state - no clients needed following our KISS architecture
+    let state = AppState {};
+    
+    // Build router
+    let router = Router::new()
+        .route("/api/analysis/tanks", get(get_all_tank_analysis))
+        .route("/api/analysis/tanks/:tank_id", get(get_tank_analysis_by_id))
+        .route("/api/challenges/current", get(get_current_challenge))
+        .route("/api/challenges/test/1", get(challenges::test_challenge_1))
+        .route("/api/challenges/3/validate", get(validate_memory_optimization))
+        // Challenge solution validation should be in the service where the implementation resides
+        // For Challenge #1, validation is done in the aqua-monitor service
+        .route("/api/health", get(health_check))
+        .with_state(state);
+    
+    Ok(router.into())
+}
+
+async fn health_check() -> impl IntoResponse {
+    StatusCode::OK
+}
+
+// Define a summary struct for collection response
+#[derive(Serialize)]
+struct TankSummary {
+    tank_id: String,
+    species_id: i32,
+    species_name: String,
+    overall_health: &'static str,
+    timestamp: String,
+}
+
+// Map species_id to species_name for the demo
+fn get_species_name(species_id: i32) -> String {
+    match species_id {
+        1 => "Neon Tetra".to_string(),
+        2 => "Clownfish".to_string(),
+        3 => "Blue Tang".to_string(),
+        4 => "Guppy".to_string(),
+        5 => "Betta".to_string(),
+        _ => format!("Unknown Species (ID: {})", species_id),
+    }
+}
+
+// Handler for all tanks analysis - returns summarized information
+async fn get_all_tank_analysis(
+    Query(params): Query<AnalysisParams>,
+    State(_state): State<AppState>,
+) -> impl IntoResponse {
+    // Create a span for tracking multi-tank environmental analysis
+    let span = tracing::info_span!("multi_tank_analysis");
+    let _guard = span.enter();
+    
+    // Add request ID for correlation and timing
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let start_time = std::time::Instant::now();
+    
+    tracing::info!(
+        request_id = %request_id,
+        operation = "multi_tank_analysis",
+        tanks_requested = "all",
+        "Starting multi-tank environmental analysis"
+    );
+    // Defined tank IDs in our system
+    let tank_ids = vec!["Tank-A1", "Tank-B2", "Tank-C3"];
+    
+    // Create summary results for all defined tanks
+    let results: Vec<TankSummary> = tank_ids
+        .into_iter()
+        .map(|tank_id| {
+            let mut tank_params = params.clone();
+            tank_params.tank_id = Some(tank_id.to_string());
+            
+            // Get full analysis but only return summary
+            let full_analysis = challenges::get_analysis_result(tank_params);
+            
+            // Convert to summary
+            TankSummary {
+                tank_id: full_analysis.tank_id,
+                species_id: full_analysis.species_id,
+                species_name: get_species_name(full_analysis.species_id),
+                overall_health: full_analysis.overall_health,
+                timestamp: full_analysis.timestamp,
+            }
+        })
+        .collect();
+        
+    // Log timing information on completion
+    let elapsed = start_time.elapsed().as_millis() as f64;
+    tracing::info!(
+        request_id = %request_id,
+        operation = "multi_tank_analysis",
+        tanks_analyzed = results.len(),
+        analysis_duration_ms = elapsed,
+        operation_status = "success",
+        "Multi-tank environmental analysis completed"
+    );
+    
+    Json(results)
+}
+
+// Handler for single tank analysis by ID
+async fn get_tank_analysis_by_id(
+    State(_state): State<AppState>,
+    Path(tank_id): Path<String>,
+    Query(params): Query<AnalysisParams>,
+) -> impl IntoResponse {
+    // Create a span for tracking single tank environmental analysis
+    let span = tracing::info_span!("single_tank_analysis");
+    let _guard = span.enter();
+    
+    // Add request ID for correlation and timing
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let start_time = std::time::Instant::now();
+    
+    tracing::info!(
+        request_id = %request_id,
+        tank_id = %tank_id,
+        operation = "single_tank_analysis",
+        "Starting tank environmental analysis"
+    );
+    // Override tank_id from path parameter
+    let mut tank_params = params;
+    // Clone tank_id directly in the assignment to keep the original for logging
+    tank_params.tank_id = Some(tank_id.clone());
+    
+    // Get single tank analysis
+    let result = challenges::get_analysis_result(tank_params);
+    
+    // Log timing information on completion
+    let elapsed = start_time.elapsed().as_millis() as f64;
+    tracing::info!(
+        request_id = %request_id,
+        tank_id = %tank_id,
+        analysis_duration_ms = elapsed,
+        overall_health = %result.overall_health,
+        operation_status = "success",
+        "Tank environmental analysis completed"
+    );
+    
+    Json(result)
+}
+
+/// Validates the implementation of Challenge #3: Memory Optimization
+async fn validate_memory_optimization(
+    State(_state): State<AppState>,
+) -> impl IntoResponse {
+    tracing::info!("Starting validation for Challenge #3: Memory Optimization");
+    
+    use serde_json::json;
+    use std::fs;
+
+    // Create a request ID for correlation in logs
+    let request_id = uuid::Uuid::new_v4().to_string();
+    
+    // Extract just the challenge code section using the challenge markers
+    let source_path = std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join("src/challenges.rs");
+    
+    // Read the source code file
+    let source_code = match fs::read_to_string(&source_path) {
+        Ok(content) => content,
+        Err(e) => {
+            tracing::error!(
+                request_id = %request_id,
+                error = %e,
+                "Failed to read source code for validation"
+            );
+            // If we can't read the source, assume the challenge is not completed
+            return (StatusCode::OK, Json(json!({
+                "valid": false,
+                "message": "Validation failed: Unable to verify implementation.",
+                "system_component": {
+                    "name": "Analysis Engine",
+                    "description": "Analysis engine is experiencing high memory usage",
+                    "status": "degraded"
+                }
+            })));
+        }
+    };
+    
+    // Find the challenge section boundaries
+    let challenge_start = source_code.find("// ⚠️ CHALLENGE #3: MEMORY OPTIMIZATION ⚠️");
+    let challenge_end = source_code.find("// ⚠️ END CHALLENGE CODE ⚠️");
+    
+    // Check if we found the challenge section boundaries
+    if challenge_start.is_none() || challenge_end.is_none() {
+        tracing::error!(
+            request_id = %request_id,
+            "Could not find challenge section boundaries in source code"
+        );
+        return (StatusCode::OK, Json(json!({
+            "valid": false,
+            "message": "Validation failed: Unable to verify implementation.",
+            "system_component": {
+                "name": "Analysis Engine",
+                "description": "Analysis engine is experiencing high memory usage",
+                "status": "degraded"
+            }
+        })));
+    }
+    
+    // Extract just the challenge code section
+    let challenge_code = &source_code[challenge_start.unwrap()..challenge_end.unwrap() + "// ⚠️ END CHALLENGE CODE ⚠️".len()];
+    
+    // Check for the use of static string references
+    // Count the number of .to_string() calls in the challenge code
+    let to_string_count = challenge_code.matches(".to_string()").count();
+    
+    // Check for the use of &str instead of String
+    let uses_str_type = challenge_code.contains("&str") || challenge_code.contains("&'static str");
+    
+    // Log what we're finding in the challenge code
+    tracing::info!(
+        request_id = %request_id,
+        to_string_count = to_string_count,
+        uses_str_type = uses_str_type,
+        "Challenge code check results"
+    );
+    
+    // The challenge is completed if the number of .to_string() calls is significantly reduced
+    // and &str type is used instead
+    let is_valid = to_string_count < 10 && uses_str_type;
+    
+    tracing::info!(
+        request_id = %request_id,
+        solution_valid = is_valid,
+        "Challenge #3 validation completed"
+    );
+    
+    // Build a standardized response following the same format as other challenges
+    let response = json!({
+        "valid": is_valid,
+        "message": if is_valid {
+            "Solution correctly implemented! Memory usage is now optimized."
+        } else {
+            "Solution validation failed. Please optimize memory usage by using static string references instead of creating new String objects."
+        },
+        "system_component": {
+            "name": "Analysis Engine",
+            "description": if is_valid {
+                "Analysis engine memory usage is now optimized"
+            } else {
+                "Analysis engine is experiencing high memory usage"
+            },
+            "status": if is_valid { "normal" } else { "degraded" }
+        }
+    });
+    
+    (StatusCode::OK, Json(response))
+}
+
+```rust
+// Add to Cargo.toml:
+// lazy_static = "1.4.0"
+
+use lazy_static::lazy_static;
+use reqwest::Client;
+
+lazy_static! {
+    static ref HTTP_CLIENT: Client = Client::new();
+}
+
+async fn get_data() -> Result<String, Error> {
+    // Use the same shared client
+    let response = HTTP_CLIENT.get("https://api.example.com/data").send().await?;
+    response.text().await
+}
+```
+
+## Configuring Your Static Client for Production
+
+For real-world usage, you'll want to configure your client:
+
+```rust
+static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
+    Client::builder()
+        // Set a timeout for the entire request
+        .timeout(std::time::Duration::from_secs(30))
+        
+        // Set how long to wait for initial connection
+        .connect_timeout(std::time::Duration::from_secs(5))
+        
+        // Set how many idle connections to keep per host
+        .pool_max_idle_per_host(10)
+        
+        // How long to keep idle connections alive
+        .pool_idle_timeout(std::time::Duration::from_secs(60))
+        
+        // Build the client
+        .build()
+        .expect("Failed to create HTTP client")
+});
+```
+
+## Handling Errors Gracefully
+
+It's a good practice to handle client creation errors:
+
+```rust
+static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
+    match Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build() {
+            Ok(client) => client,
+            Err(e) => {
+                // Log the error
+                eprintln!("Failed to create optimal HTTP client: {}", e);
+                
+                // Fall back to a basic client
+                Client::new()
+            }
+    }
+});
+```
+
+## Thread Safety Considerations
+
+The good news is that `reqwest::Client` is already designed to be thread-safe, so you don't need to do anything special to use it in a multi-threaded context. This is why we can safely make it static.
+
+## Testing Code that Uses Static Clients
+
+Static variables can make testing harder. For better testability, consider:
+
+1. **Feature flags** to use mock clients in tests
+2. **Dependency injection** patterns where possible
+3. **Traits** to abstract client behavior
+
+## Before and After: The Code in Context
+
+Let's look at a complete example showing both the problem and solution:
+
+### Before (Problem):
+
+```rust
+use reqwest;
+
+async fn fetch_tank_status() -> Result<(), Box<dyn std::error::Error>> {
+    // 🚫 Problem: New client created each time
+    let client = reqwest::Client::new();
+    
+    // Make the request
+    let response = client
+        .get("https://api.example.com/tank/status")
+        .send()
+        .await?;
+    
+    // Process response...
+    println!("Status: {}", response.status());
+    
+    Ok(())
+}
+
+// This function gets called thousands of times in our service
+async fn monitor_tanks() {
+    for _ in 0..1000 {
+        // 🔥 Creates 1000 separate clients! Major resource waste
+        let _ = fetch_tank_status().await;
+    }
+}
+```
+
+### After (Solution):
+
+```rust
+use reqwest;
+use once_cell::sync::Lazy;
+
+// ✅ Create just one client for the entire application
+static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .expect("Failed to build HTTP client")
+});
+
+async fn fetch_tank_status() -> Result<(), Box<dyn std::error::Error>> {
+    // ✅ Reuse the shared client
+    let response = HTTP_CLIENT
+        .get("https://api.example.com/tank/status")
+        .send()
+        .await?;
+    
+    // Process response...
+    println!("Status: {}", response.status());
+    
+    Ok(())
+}
+
+// Now the same function is much more efficient
+async fn monitor_tanks() {
+    for _ in 0..1000 {
+        // ✅ Reuses the same client 1000 times - very efficient!
+        let _ = fetch_tank_status().await;
+    }
+}
+```
+
+## Performance Monitoring and Benchmarking
+
+After implementing a static HTTP client, you should measure the impact. Here are some key metrics to monitor:
+
+### Memory Usage
+
+```rust
+// Example of tracking memory with metrics
+let client_count = HTTP_CLIENT_COUNTER.load(Ordering::SeqCst);
+metrics::gauge!("http_client.count", client_count as f64);
+```
+
+### Connection Reuse
+
+Connection reuse is one of the biggest benefits of a static client. You can monitor this using:
+
+```rust
+// Get connection stats from reqwest client
+let stats = HTTP_CLIENT.metrics();
+metrics::gauge!("http_client.connections.active", stats.active as f64);
+metrics::gauge!("http_client.connections.idle", stats.idle as f64);
+```
+
+### Before/After Benchmarks
+
+Here's a real-world example of performance improvements after implementing static clients:
+
+| Metric | Before (New Client) | After (Static Client) | Improvement |
+|--------|---------------------|----------------------|-------------|
+| Memory Usage | 250MB | 85MB | 66% reduction |
+| Request Latency | 120ms | 35ms | 70% faster |
+| Max Requests/sec | 1,200 | 4,500 | 275% increase |
+| Connection Errors | 12/min | 0.1/min | 99% reduction |
+
+## Common Implementation Mistakes
+
+### Mistake 1: Using Mutable Statics
+
+Some developers try to use mutable static variables, which leads to safety issues:
+
+```rust
+// ❌ WRONG: Using mutable static
+static mut HTTP_CLIENT: Option<Client> = None;
+
+fn get_client() -> &'static Client {
+    unsafe {
+        if HTTP_CLIENT.is_none() {
+            HTTP_CLIENT = Some(Client::new());
+        }
+        HTTP_CLIENT.as_ref().unwrap()
+    }
+}
+```
+
+This approach requires unsafe code and can lead to data races.
+
+### Mistake 2: Recreating Clients in Middleware
+
+Another common mistake is creating clients inside middleware or filters:
+
+```rust
+// ❌ WRONG: Creating client in middleware
+async fn auth_middleware<B>(req: Request<B>, next: Next<B>) -> Response {
+    let client = Client::new(); // Creates a new client for every request!
+    
+    // Validate token...
+    let token = extract_token(&req);
+    let is_valid = client.get("https://auth.example.com/validate")
+        .bearer_auth(token)
+        .send()
+        .await
+        .is_ok();
+        
+    // ...
+}
+```
+
+### Mistake 3: Not Configuring Connection Pools
+
+Not configuring connection pools can limit throughput:
+
+```rust
+// ⚠️ SUBOPTIMAL: Default connection pool might be too small
+static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| Client::new());
+```
+
+Better:
+
+```rust
+// ✅ GOOD: Configured connection pool
+static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
+    Client::builder()
+        .pool_max_idle_per_host(10) // Keep up to 10 idle connections per host
+        .pool_idle_timeout(Duration::from_secs(30)) // Keep idle connections for 30 seconds
+        .build()
+        .expect("Failed to build HTTP client")
+});
+```
+
+## Framework Integration
+
+### Axum Integration
+
+In Axum (which we're using), you can add the client to your app state:
+
+```rust
+// Define your application state
+struct AppState {
+    // Include other state fields...
+    http_client: &'static Client,
+}
+
+// Initialize once during startup
+let app_state = AppState {
+    // Initialize other state...
+    http_client: &HTTP_CLIENT,
+};
+
+// Build router with state
+let app = Router::new()
+    .route("/api/data", get(get_data))
+    .with_state(app_state);
+```
+
+Then use it in your handlers:
+
+```rust
+async fn get_data(State(state): State<AppState>) -> impl IntoResponse {
+    // Use the shared client
+    let response = state.http_client
+        .get("https://api.example.com/data")
+        .send()
+        .await?
+        .json::<Data>()
+        .await?;
+        
+    Json(response)
+}
+```
+
+## Handling Edge Cases
+
+### Graceful Shutdown
+
+When your application terminates, you might want to gracefully close connections:
+
+```rust
+// Register a shutdown handler
+ctrl_c::set_handler(move || {
+    // This ensures in-flight requests can complete
+    // but no new requests will be accepted
+    HTTP_CLIENT.close();
+})?;
+```
+
+### Circuit Breaking
+
+For robust systems, consider adding circuit breaking to your client:
+
+```rust
+static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
+    let circuit_breaker = CircuitBreaker::new()
+        .with_failure_threshold(5)
+        .with_reset_timeout(Duration::from_secs(30));
+        
+    Client::builder()
+        .middleware(circuit_breaker)
+        .build()
+        .expect("Failed to build HTTP client")
+});
+```
+
+## Key Takeaways
+
+1. **Create HTTP clients once** and reuse them throughout your application
+2. Use **`once_cell`** or **`lazy_static`** to create shared static clients
+3. **Configure your clients** with appropriate timeouts and connection pool settings
+4. **Monitor the performance impact** of your optimization
+5. Consider **graceful shutdown** and **circuit breaking** for production systems
+6. Remember that this simple change can dramatically **improve performance and reliability**
+
+By implementing a static HTTP client, you'll build more efficient, reliable Rust services that can handle higher loads with fewer resources. The performance gains are significant and directly impact user experience and operational costs.
+
+## Security Considerations
+
+### TLS Configuration
+
+For production systems, you should configure TLS settings appropriately:
+
+```rust
+use rustls::{ClientConfig, RootCertStore};
+use std::sync::Arc;
+
+static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
+    // Load trusted root certificates
+    let mut root_store = RootCertStore::empty();
+    root_store.add_server_trust_anchors(
+        webpki_roots::TLS_SERVER_ROOTS
+            .0
+            .iter()
+            .map(|ta| {
+                rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
+                    ta.subject,
+                    ta.spki,
+                    ta.name_constraints,
+                )
+            })
+    );
+    
+    // Create a rustls client config
+    let tls_config = ClientConfig::builder()
+        .with_safe_defaults()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+    
+    // Build the reqwest client with custom TLS config
+    Client::builder()
+        .use_preconfigured_tls(tls_config)
+        .build()
+        .expect("Failed to build TLS-configured client")
+});
+```
+
+### Request Tracing and Security Headers
+
+For proper security monitoring, consider adding tracing and security headers:
+
+```rust
+static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
+    Client::builder()
+        // Add a custom middleware for tracing
+        .middleware(TracingMiddleware::new())
+        // Configure default headers for all requests
+        .default_headers({
+            let mut headers = HeaderMap::new();
+            headers.insert("X-Request-ID", HeaderValue::from_static("{{request_id}}"));
+            headers.insert("User-Agent", HeaderValue::from_static("MyApp/1.0"));
+            headers
+        })
+        .build()
+        .expect("Failed to build client")
+});
+```
+
+## Real-world Deployment Strategies
+
+### Container-based Services
+
+When deploying containerized Rust services, static HTTP clients become even more important. Containers often have limited resources, and each process needs to be efficient.
+
+```dockerfile
+# Example Dockerfile for a Rust service with optimized HTTP client
+FROM rust:1.75 as builder
+WORKDIR /app
+COPY . .
+RUN cargo build --release
+
+# Create a minimal runtime image
+FROM debian:bullseye-slim
+WORKDIR /app
+COPY --from=builder /app/target/release/my-service /app/
+
+# Configure resource limits that align with your client's connection pool
+# Example: if your pool_max_idle_per_host is 10 and you have 5 hosts
+ENV RUST_MIN_STACK=4194304
+ENV MAX_CONNECTIONS=50
+
+CMD ["/app/my-service"]
+```
+
+### Observability Integration
+
+In production, you should tie your HTTP client metrics to your observability system:
+
+```rust
+// Add counters for client usage
+static REQUEST_COUNTER: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
+static ERROR_COUNTER: Lazy<AtomicUsize> = Lazy::new(|| AtomicUsize::new(0));
+
+async fn make_request() -> Result<Response, Error> {
+    // Track request count
+    let req_count = REQUEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+    
+    // Record metrics at regular intervals
+    if req_count % 100 == 0 {
+        let stats = HTTP_CLIENT.metrics();
+        metrics::gauge!("http.connections.active", stats.active as f64);
+        metrics::gauge!("http.connections.idle", stats.idle as f64);
+        metrics::counter!("http.requests.total", req_count as u64);
+    }
+    
+    // Make the request
+    match HTTP_CLIENT.get("https://api.example.com").send().await {
+        Ok(response) => Ok(response),
+        Err(e) => {
+            // Track errors
+            ERROR_COUNTER.fetch_add(1, Ordering::SeqCst);
+            metrics::counter!("http.errors", 1);
+            Err(e.into())
+        }
+    }
+}
+```
+
+By combining these practices, you'll create HTTP clients that are not only efficient but also secure, observable, and production-ready.
+"#.to_string(),
+};
+    
+    let challenge_4_solution = ChallengeSolution {
+        code: r#"// Before: Creating a new client for every request
+// This causes resource leaks and excessive memory usage
+async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoResponse {
+    // Create a span for sensor status check
+    let span = tracing::info_span!("tank_sensor_status_check");
+    let _guard = span.enter();
+
+    // Start timing for performance logging
+    let _start = std::time::Instant::now();
+
+    // BAD: Creating a new client for every request
+    // This causes memory and resource leaks
+    let client = reqwest::Client::new();
+    
+    // Rest of the function remains the same
+    // but creates a new client every time
+}
+
+// After optimization: Using a static HTTP client
+use once_cell::sync::Lazy;
+use reqwest::Client;
+
+// Define a single static HTTP client that is created only once
+static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
+    Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .expect("Failed to build HTTP client")
+});
+
+async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoResponse {
+    // Create a span for sensor status check
+    let span = tracing::info_span!("tank_sensor_status_check");
+            {
+                "id": 1,
+                "name": "latency-issue ",
+                "title": "The Sluggish Sensor ",
+                "description": "The environmental monitoring system is experiencing severe delays, preventing timely readings of tank conditions. The file I/O operations seem particularly slow, with response times far exceeding what should be expected even for standard disk operations. Every second counts when maintaining delicate ecosystems! ",
+                "hint": "Look for blocking operations in the get_tank_readings function. In async Rust, using std::fs::read_to_string blocks the entire thread. Also, check if there are any artificial delays that might be contributing to the slowdown. The solution involves both using the right async I/O method and ensuring there are no unnecessary waits.",
+                "service": "aqua-monitor ",
+                "file": "src/challenges.rs ",
+                "function": "get_tank_readings ",
+                "status": "degraded",
+                "validation_endpoint": {
+                    "service": "aqua-monitor ",
+                    "url": "/api/challenges/1/validate ",
+                    "method": "GET"
+                },
+                "solution": challenge_1_solution
+            },
+            {
+                "id": 2,
+                "name": "query-optimization ",
+                "title": "The Query Conundrum ",
+                "description": "The species database is responding slowly to searches, making it difficult to quickly identify species information. The current implementation uses case-sensitive queries that do not utilize database indexes effectively. ",
+                "hint": "Look at the get_species function in the species-hub service. The SQL queries are using LIKE for case-sensitive searches, which can be slow. Consider using a more efficient query approach that maintains case-insensitivity.",
+                "service": "species-hub ",
+                "file": "src/challenges.rs ",
+                "function": "get_species ",
+                "status": "degraded",
+                "validation_endpoint": {
+                    "service": "species-hub ",
+                    "url": "/api/challenges/2/validate ",
+                    "method": "GET"
+                },
+                "solution": challenge_2_solution
+            },
+            {
+                "id": 3,
+                "name": "memory-optimization ",
+                "title": "The Memory Miser ",
+                "description": "The analysis engine is consuming excessive memory due to inefficient string handling. Each analysis result creates multiple new String objects, leading to high memory usage and frequent garbage collection. ",
+                "hint": "Look at the get_analysis_result function in the aqua-brain service. The current implementation creates new String objects for every field in the analysis results. Consider using static string references (&str) instead of String objects to reduce memory allocations.",
+                "service": "aqua-brain ",
+                "file": "src/challenges.rs ",
+                "function": "get_analysis_result ",
+                "status": "degraded",
+                "validation_endpoint": {
+                    "service": "aqua-brain ",
+                    "url": "/api/challenges/3/validate ",
+                    "method": "GET"
+                },
+                "solution": challenge_3_solution
+                "validation_endpoint": {
+                    "service": "aqua-monitor ",
+                    "url": "/api/challenges/4/validate ",
+                    "method": "GET"
+                },
+                "solution": challenge_4_solution
+            }
+        ],
+        "total": 4,
+        "solved": 0,
+    }))
+}
+
+
+async fn health_check() -> impl IntoResponse {
+    StatusCode::OK
+}
+
+
+
+// Define a summary struct for collection response
+#[derive(Serialize)]
+struct TankSummary {
+    tank_id: String,
+    species_id: i32,
+    species_name: String,
+    overall_health: &'static str,
+    timestamp: String,
+}
+
+// Map species_id to species_name for the demo
+fn get_species_name(species_id: i32) -> String {
+    match species_id {
+        1 => "Neon Tetra".to_string(),
+        2 => "Clownfish".to_string(),
+        3 => "Blue Tang".to_string(),
+        4 => "Guppy".to_string(),
+        5 => "Betta".to_string(),
+        _ => format!("Unknown Species (ID: {})", species_id),
+    }
+}
+
+// Handler for all tanks analysis - returns summarized information
+async fn get_all_tank_analysis(
+    Query(params): Query<AnalysisParams>,
+    State(_state): State<AppState>,
+) -> impl IntoResponse {
+    // Create a span for tracking multi-tank environmental analysis
+    let span = tracing::info_span!("multi_tank_analysis");
+    let _guard = span.enter();
+    
+    // Add request ID for correlation and timing
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let start_time = std::time::Instant::now();
+    
+    tracing::info!(
+        request_id = %request_id,
+        operation = "multi_tank_analysis",
+        tanks_requested = "all",
+        "Starting multi-tank environmental analysis"
+    );
+    // Defined tank IDs in our system
+    let tank_ids = vec!["Tank-A1 ", "Tank-B2 ", "Tank-C3 "];
+    
+    // Create summary results for all defined tanks
+    let results: Vec<TankSummary> = tank_ids
+        .into_iter()
+        .map(|tank_id| {
+            let mut tank_params = params.clone();
+            tank_params.tank_id = Some(tank_id.to_string());
+            
+            // Get full analysis but only return summary
+            let full_analysis = challenges::get_analysis_result(tank_params);
+            
+            // Convert to summary
+            TankSummary {
+                tank_id: full_analysis.tank_id,
+                species_id: full_analysis.species_id,
+                species_name: get_species_name(full_analysis.species_id),
+                overall_health: full_analysis.overall_health,
+                timestamp: full_analysis.timestamp,
+            }
+        })
+        .collect();
+        
+    // Log timing information on completion
+    let elapsed = start_time.elapsed().as_millis() as f64;
+    tracing::info!(
+        request_id = %request_id,
+        operation = "multi_tank_analysis",
+        tanks_analyzed = results.len(),
+        analysis_duration_ms = elapsed,
+        operation_status = "success",
+        "Multi-tank environmental analysis completed "
+    );
+    
+    Json(results)
+}
+
+// Handler for single tank analysis by ID
+async fn get_tank_analysis_by_id(
+    State(_state): State<AppState>,
+    Path(tank_id): Path<String>,
+    Query(params): Query<AnalysisParams>,
+) -> impl IntoResponse {
+    // Create a span for tracking single tank environmental analysis
+    let span = tracing::info_span!("single_tank_analysis");
+    let _guard = span.enter();
+    
+    // Add request ID for correlation and timing
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let start_time = std::time::Instant::now();
+    
+    tracing::info!(
+        request_id = %request_id,
+        tank_id = %tank_id,
+        operation = "single_tank_analysis",
+        "Starting tank environmental analysis "
+    );
+    // Override tank_id from path parameter
+    let mut tank_params = params;
+    // Clone tank_id directly in the assignment to keep the original for logging
+    tank_params.tank_id = Some(tank_id.clone());
+    
+    // Get single tank analysis
+    let result = challenges::get_analysis_result(tank_params);
+    
+    // Log timing information on completion
+    let elapsed = start_time.elapsed().as_millis() as f64;
+    tracing::info!(
+        request_id = %request_id,
+        tank_id = %tank_id,
+        analysis_duration_ms = elapsed,
+        overall_health = %result.overall_health,
+        operation_status = "success",
+        "Tank environmental analysis completed "
+    );
+    
+    Json(result)
+}
+
+
+
+/// Validates the implementation of Challenge #3: Memory Optimization
+async fn validate_memory_optimization(
+    State(_state): State<AppState>,
+) -> impl IntoResponse {
+    tracing::info!("Starting validation for Challenge #3: Memory Optimization ");
+    
+    use serde_json::json;
+    use std::fs;
+
+    // Create a request ID for correlation in logs
+    let request_id = uuid::Uuid::new_v4().to_string();
+    
+    // Extract just the challenge code section using the challenge markers
+    let source_path = std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join("src/challenges.rs");
+    
+    // Read the source code file
+    let source_code = match fs::read_to_string(&source_path) {
+        Ok(content) => content,
+        Err(e) => {
+            tracing::error!(
+                request_id = %request_id,
+                error = %e,
+                "Failed to read source code for validation "
+            );
+            // If we can't read the source, assume the challenge is not completed
+            return (StatusCode::OK, Json(json!({
+                "valid": false,
+                "message": "Validation failed: Unable to verify implementation.",
+                "system_component": {
+                    "name": "Analysis Engine ",
+                    "description": "Analysis engine is experiencing high memory usage ",
+                    "status": "degraded"
+                }
+            })));
+        }
+    };
+    
+    // Find the challenge section boundaries
+    let challenge_start = source_code.find("// ⚠️ CHALLENGE #3: MEMORY OPTIMIZATION ⚠️");
+    let challenge_end = source_code.find("// ⚠️ END CHALLENGE CODE ⚠️");
+    
+    // Check if we found the challenge section boundaries
+    if challenge_start.is_none() || challenge_end.is_none() {
+        tracing::error!(
+            request_id = %request_id,
+            "Could not find challenge section boundaries in source code"
+        );
+        return (StatusCode::OK, Json(json!({
+            "valid": false,
+            "message": "Validation failed: Unable to verify implementation.",
+            "system_component": {
+                "name": "Analysis Engine ",
+                "description": "Analysis engine is experiencing high memory usage ",
+                "status": "degraded"
+            }
+        })));
+    }
+    
+    // Extract just the challenge code section
+    let challenge_code = &source_code[challenge_start.unwrap()..challenge_end.unwrap() + "// ⚠️ END CHALLENGE CODE ⚠️".len()];
+    
+    // Check for the use of static string references
+    // Count the number of .to_string() calls in the challenge code
+    let to_string_count = challenge_code.matches(".to_string()").count();
+    
+    // Check for the use of &str instead of String
+    let uses_str_type = challenge_code.contains("&str") || challenge_code.contains("&'static str");
+    
+    // Log what we're finding in the challenge code
+    tracing::info!(
+        request_id = %request_id,
+        to_string_count = to_string_count,
+        uses_str_type = uses_str_type,
+        "Challenge code check results"
+    );
+    
+    // The challenge is completed if the number of .to_string() calls is significantly reduced
+    // and &str type is used instead
+    let is_valid = to_string_count < 10 && uses_str_type;
+    
+    tracing::info!(
+        request_id = %request_id,
+        solution_valid = is_valid,
+        "Challenge #3 validation completed"
+    );
+    
+    // Build a standardized response following the same format as other challenges
+    let response = json!({
+        "valid": is_valid,
+        "message": if is_valid {
+            "Solution correctly implemented! Memory usage is now optimized."
+        } else {
+            "Solution validation failed. Please optimize memory usage by using static string references instead of creating new String objects."
+        },
+        "system_component": {
+            "name": "Analysis Engine ",
+            "description": if is_valid {
+                "Analysis engine memory usage is now optimized"
+            } else {
+                "Analysis engine is experiencing high memory usage"
+            },
+            "status": if is_valid { "normal" } else { "degraded" }
+        }
+    });
+    
+    (StatusCode::OK, Json(response))
+}
+
