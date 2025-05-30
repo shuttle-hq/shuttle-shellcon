@@ -51,7 +51,7 @@ pub async fn get_species(
     // This requires a full table scan and doesn't utilize indexes effectively
     let species = if let Some(name) = &params.name {
         // Use runtime query with LIKE for case-sensitive search
-        sqlx::query("SELECT * FROM species WHERE name ILIKE $1")
+        sqlx::query("SELECT * FROM species WHERE name LIKE $1")
             .bind(format!("%{}%", name))
             .map(|row: PgRow| {
                 Species {
@@ -79,7 +79,7 @@ pub async fn get_species(
             })?
     } else if let Some(scientific_name) = &params.scientific_name {
         // Use runtime query with LIKE for case-sensitive search
-        sqlx::query("SELECT * FROM species WHERE scientific_name ILIKE $1")
+        sqlx::query("SELECT * FROM species WHERE scientific_name LIKE $1")
             .bind(format!("%{}%", scientific_name))
             .map(|row: PgRow| {
                 Species {

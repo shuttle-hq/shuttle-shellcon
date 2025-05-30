@@ -508,21 +508,17 @@ async fn validate_memory_optimization(
     // Extract just the challenge code section
     let challenge_code = &source_code[challenge_start.unwrap()..challenge_end.unwrap() + "// ⚠️ END CHALLENGE CODE ⚠️".len()];
     
-    // Function to check if a pattern exists in uncommented code
+    // Simple function to check if a pattern exists in uncommented code
     let is_uncommented = |pattern: &str| -> bool {
-        // Check each line for the pattern, ignoring commented lines
-        challenge_code.lines().any(|line| {
-            let trimmed = line.trim();
-            trimmed.contains(pattern) && !trimmed.starts_with("//")
-        })
+        challenge_code.lines()
+            .filter(|line| !line.trim().starts_with("//"))
+            .any(|line| line.contains(pattern))
     };
     
     // Count the number of uncommented .to_string() calls in the challenge code
     let to_string_count = challenge_code.lines()
-        .filter(|line| {
-            let trimmed = line.trim();
-            trimmed.contains(".to_string()") && !trimmed.starts_with("//")
-        })
+        .filter(|line| !line.trim().starts_with("//"))
+        .filter(|line| line.contains(".to_string()"))
         .count();
     
     // Check for the use of &str instead of String in uncommented code

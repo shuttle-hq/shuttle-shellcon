@@ -304,36 +304,30 @@ async fn validate_query_optimization(
     // Extract just the challenge code section
     let challenge_code = &source_code[challenge_start.unwrap()..challenge_end.unwrap() + "// ⚠️ END CHALLENGE CODE ⚠️".len()];
     
-    // Function to check if a pattern exists in uncommented code
+    // Simple function to check if a pattern exists in uncommented code
     let is_uncommented = |pattern: &str| -> bool {
-        // Check each line for the pattern, ignoring commented lines
-        challenge_code.lines().any(|line| {
-            let trimmed = line.trim();
-            trimmed.contains(pattern) && !trimmed.starts_with("//")
-        })
+        challenge_code.lines()
+            .filter(|line| !line.trim().starts_with("//"))
+            .any(|line| line.contains(pattern))
     };
     
-    // Check if both queries in the challenge code use ILIKE (only in uncommented code)
+    // Check for correct ILIKE usage and any remaining LIKE usage
     let name_uses_ilike = is_uncommented("WHERE name ILIKE $1");
     let scientific_name_uses_ilike = is_uncommented("WHERE scientific_name ILIKE $1");
+    let still_using_like = is_uncommented("WHERE name LIKE $1") || 
+                          is_uncommented("WHERE scientific_name LIKE $1");
     
-    // Log what we're finding in the challenge code
+    // Log key validation findings
     tracing::info!(
         request_id = %request_id,
         name_uses_ilike = name_uses_ilike,
         scientific_name_uses_ilike = scientific_name_uses_ilike,
-        "Challenge code check results"
+        still_using_like = still_using_like,
+        "Challenge validation check results"
     );
     
-    // Also check for LIKE to confirm we're reading the right section (only in uncommented code)
-    let name_uses_like = is_uncommented("WHERE name LIKE $1");
-    let scientific_name_uses_like = is_uncommented("WHERE scientific_name LIKE $1");
-    
-    // Build the validation result - if both uses_ilike flags are true, validation passes
+    // Both queries must use ILIKE for validation to pass
     let is_valid = name_uses_ilike && scientific_name_uses_ilike;
-    
-    // If still using LIKE instead of ILIKE, fail validation
-    let still_using_like = name_uses_like || scientific_name_uses_like;
     
     // Build a standardized response following the same format as other challenges
     let response = json!({

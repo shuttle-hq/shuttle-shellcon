@@ -12,11 +12,24 @@ The convention organizers are in a pinch—quite literally, as the convention's 
 
 ## 🏗️ System Architecture
 
-The Smart Aquarium System consists of three microservices:
+The Smart Aquarium System consists of three backend microservices and a separate frontend application:
 
+### Backend Services
 - **aqua-monitor**: Collects real-time environmental data from tank sensors
 - **species-hub**: Manages the species database and feeding requirements
 - **aqua-brain**: Performs analysis and coordinates system responses
+
+### Frontend Application
+The frontend application is available in a separate repository at [shuttle-shellcon-frontend](https://github.com/shuttle-hq/shuttle-shellcon-frontend). The UI provides:
+- Interactive challenge validation
+- Detailed lecture materials for each challenge
+- Visual feedback on your solutions
+- Real-time monitoring of your aquarium system
+
+To get started with the frontend:
+1. Clone the frontend repository
+2. Follow the setup instructions in its README
+3. Configure it to point to your deployed services
 
 ## 🚀 Getting Started with Shuttle Cloud
 
@@ -28,6 +41,8 @@ Shuttle is a platform that makes deploying Rust applications simple. Unlike trad
 - [Shuttle CLI](https://docs.shuttle.rs/getting-started/installation) (latest version)
 
 ### Installing Shuttle CLI
+
+If you don't have a Shuttle account, please create one [here](https://console.shuttle.dev/login).
 
 ```bash
 # Install the Shuttle CLI
@@ -83,17 +98,7 @@ After each successful deployment, Shuttle will display the unique URL for your s
 
 > **Important**: First-time deployments may take 3-5 minutes to fully initialize. Be patient if services aren't immediately responsive.
 
-### 3. Checking Deployment Logs
-
-If you encounter issues or want to verify your service is running correctly, check the logs:
-
-```bash
-# View the latest logs for a service
-cd services/aqua-monitor
-shuttle logs --latest
-```
-
-### 4. Testing Your Deployed Services
+### 3. Testing Your Deployed Services
 
 Verify that all services are running and accessible:
 
@@ -110,7 +115,7 @@ curl https://species-hub-def789.shuttle.app/api/health
 
 Each service should respond with a 200 OK status.
 
-### 5. Redeploying After Changes
+### 4. Redeploying After Changes
 
 As you solve challenges, you'll need to redeploy your services to apply your changes:
 
@@ -135,12 +140,7 @@ After redeploying, test your solution using the validation endpoint:
 # Example: Validating Challenge 4 solution
 curl https://aqua-monitor-abc456.shuttle.app/api/challenges/4/validate
 ```
-
-## CORS Configuration
-
-The backend services are already configured to accept requests from any origin during development. For production, you may want to restrict this to only your frontend domain.
-
-If you need to customize CORS settings, look for the CORS middleware configuration in each service's `main.rs` file.
+> **Note**: You can also test locally using `shuttle run`, but don't forget to restart your frontend using `npm run dev:localhost` to reflect the changes in the UI.
 
 ## 🕹️ The Optimization Challenges
 
@@ -148,33 +148,27 @@ Your mission is to solve five performance challenges across the microservices. E
 
 ### Challenge 1: The Sluggish Sensor (Async I/O)
 - **Service**: aqua-monitor
-- **File**: src/main.rs
+- **File**: src/challenges.rs
 - **Function**: get_tank_readings
 - **Problem**: The environmental monitoring system is experiencing severe delays due to inefficient file I/O operations.
 
 ### Challenge 2: The Query Conundrum (Database Optimization)
 - **Service**: species-hub
-- **File**: src/main.rs
+- **File**: src/challenges.rs
 - **Function**: get_species
 - **Problem**: The species database is responding slowly to searches due to inefficient queries.
 
 ### Challenge 3: The Memory Miser (String Optimization)
 - **Service**: aqua-brain
-- **File**: src/main.rs
+- **File**: src/challenges.rs
 - **Function**: get_analysis_result
 - **Problem**: The analysis engine is consuming excessive memory due to inefficient string handling.
 
 ### Challenge 4: The Leaky Connection (Resource Management)
 - **Service**: aqua-monitor
-- **File**: src/main.rs
+- **File**: src/challenges.rs
 - **Function**: get_sensor_status
 - **Problem**: The sensor status API is creating a new HTTP client for every request, causing resource leaks.
-
-### Challenge 5: Safe Shared State (Concurrency)
-- **Service**: aqua-brain
-- **File**: src/main.rs
-- **Function**: shared_state_example
-- **Problem**: Unsafe shared state is causing data races or panics in the analysis engine.
 
 ## 🧰 How to Solve a Challenge
 
@@ -186,25 +180,17 @@ Examine the challenge description and the problematic code:
 
 ```bash
 # View the source code for the challenge
-cat services/aqua-monitor/src/main.rs | grep -A 20 "get_sensor_status"
+cat services/aqua-monitor/src/challenges.rs
 ```
+Look for the challenge tag (e.g., `// ⚠️ CHALLENGE #1: ASYNC I/O ⚠️`).
 
 ### 2. Implement Your Solution
 
-Edit the code to fix the performance issue. For example, to solve Challenge 4:
-
-```rust
-// Add at the top of the file
-use once_cell::sync::Lazy;
-
-// Define a static HTTP client
-static HTTP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| reqwest::Client::new());
-
-// In the get_sensor_status function, replace:
-// let client = reqwest::Client::new();
-// with:
-let client = &*HTTP_CLIENT;
-```
+Edit the code to fix the performance issue. You can:
+- Read the challenge lecture in the UI for detailed explanations
+- Click the "Show Hint" button in the UI if you're stuck
+- View the solution guide for step-by-step instructions
+- Check the code comments for additional hints
 
 ### 3. Verify Locally Before Deploying
 
@@ -221,15 +207,30 @@ cargo check
 # Deploy your changes
 shuttle deploy
 ```
+> **Note**: You can also test locally using `shuttle run`, but don't forget to restart your frontend using `npm run dev:localhost` to reflect the changes in the UI.
 
 ### 5. Validate Your Solution
 
-```bash
-# Test the validation endpoint
-curl https://your-service-url.shuttle.app/api/challenges/4/validate
-```
+You can validate your solution in two ways:
 
-A successful validation will return a JSON response with `"valid": true`.
+1. **Using the UI (Recommended)**:
+   - Navigate to the challenge in the frontend
+   - Click the "Validate Solution" button
+   - Get immediate visual feedback and detailed error messages if any
+
+2. **Using the API directly**:
+   ```bash
+   # Test the validation endpoint
+   curl https://your-service-url.shuttle.app/api/challenges/1/validate
+   ```
+
+   A successful validation will return a JSON response with `"valid": true`.
+
+   > **Note**: Replace `your-service-url` with your actual Shuttle deployment URL and the challenge number with the one you're working on (1-4).
+   > For local testing, use `http://localhost:<port>` with the appropriate port number for each service:
+   > - aqua-monitor: 8000
+   > - species-hub: 8001
+   > - aqua-brain: 8002
 
 ## 💡 Challenge Tips
 
@@ -248,10 +249,6 @@ A successful validation will return a JSON response with `"valid": true`.
 ### Challenge 4: Resource Management
 - Identify resources being created for each request
 - Use static instances for expensive resources
-
-### Challenge 5: Concurrency
-- Look for shared state that needs thread-safe access
-- Consider using Tokio's async-aware synchronization primitives
 
 ## 🔧 Troubleshooting
 
@@ -276,11 +273,6 @@ If your solution isn't being validated correctly:
 1. **Check Implementation**: Ensure your solution matches the expected pattern
 2. **Verify Deployment**: Make sure your changes were properly deployed
 3. **Examine Logs**: Check the service logs for validation errors
-
-```bash
-# Check logs after validation
-shuttle logs --latest
-```
 
 ## 🏗️ System Architecture Details
 
@@ -325,17 +317,17 @@ Each challenge includes a validation endpoint that checks if your solution corre
 curl https://your-aqua-monitor-url.shuttle.app/api/challenges/4/validate
 ```
 
-The validation endpoints perform real checks of your implementation - they don't just simulate success. They verify that your code genuinely implements the required solution while respecting the architectural constraints.
+The validation endpoints perform syntactic checks of your implementation. They verify that your code genuinely implements the required solution while respecting the architectural constraints.
 
 ## 🎓 Learning Objectives
 
 By completing these challenges, you'll learn:
 
-1. **Performance Optimization**: Practical techniques for making Rust services faster and more efficient
-2. **Resource Management**: How to properly handle expensive resources in web services
-3. **Concurrency Patterns**: Safe approaches to shared state in async Rust
-4. **Database Efficiency**: Optimizing database queries for better performance
-5. **Shuttle Deployment**: How to deploy and manage Rust services in the cloud
+1. **Asynchronous I/O**: How to properly use async/await for non-blocking file operations
+2. **Database Query Optimization**: Techniques for writing efficient database queries and using appropriate indexing
+3. **Memory Management**: Best practices for reducing allocations and using static references in Rust
+4. **Resource Management**: How to properly manage and reuse expensive resources like HTTP clients
+
 
 ## 🏁 Conclusion
 

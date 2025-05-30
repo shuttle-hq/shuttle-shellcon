@@ -42,32 +42,19 @@ pub async fn test_challenge_1() -> impl IntoResponse {
 // Your task: Optimize memory usage by using static string references instead of creating new String objects
 pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
     // Get tank_id or default to Tank-A1
-    const NORMAL: &str = "normal";
-    const WARNING: &str = "warning";
-    const CRITICAL: &str = "critical";
-    const UNKNOWN: &str = "unknown";
-    const GOOD: &str = "good";
-    const CAUTION: &str = "caution";
-    const AT_RISK: &str = "at_risk";
-    const OVERDUE: &str = "overdue";
-    const EXCESS: &str = "excess";
-    const LOW: &str = "low";
-    const HIGH: &str = "high";
-    
-    // Get tank_id or default to Tank-A1 using &str instead of String
-    let tank_id = params.tank_id.as_deref().unwrap_or("Tank-A1");
+    let tank_id = params.tank_id.clone().unwrap_or_else(|| "Tank-A1".to_string());
     
     // Generate analysis result based on tank ID
-    match tank_id {
+    match tank_id.as_str() {
         "Tank-A1" => AnalysisResult {
             tank_id: tank_id.to_string(),
             species_id: params.species_id.unwrap_or(1),
             timestamp: chrono::Utc::now().to_rfc3339(),
-            temperature_status: WARNING,
-            ph_status: CRITICAL,
-            oxygen_status: NORMAL,
-            feeding_status: OVERDUE,
-            overall_health: AT_RISK,
+            temperature_status: "warning",
+            ph_status: "critical",
+            oxygen_status: "normal",
+            feeding_status: "overdue",
+            overall_health: "at_risk",
             recommendations: vec![
                 "Reduce temperature by 2°C",
                 "Adjust pH to 7.2-7.5 range",
@@ -78,11 +65,11 @@ pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
             tank_id: tank_id.to_string(),
             species_id: params.species_id.unwrap_or(2),
             timestamp: chrono::Utc::now().to_rfc3339(),
-            temperature_status: NORMAL,
-            ph_status: NORMAL,
-            oxygen_status: LOW,
-            feeding_status: NORMAL,
-            overall_health: GOOD,
+            temperature_status: "normal",
+            ph_status: "normal",
+            oxygen_status: "low",
+            feeding_status: "normal",
+            overall_health: "good",
             recommendations: vec![
                 "Increase aeration slightly",
                 "Monitor oxygen levels daily",
@@ -92,11 +79,11 @@ pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
             tank_id: tank_id.to_string(),
             species_id: params.species_id.unwrap_or(3),
             timestamp: chrono::Utc::now().to_rfc3339(),
-            temperature_status: NORMAL,
-            ph_status: HIGH,
-            oxygen_status: NORMAL,
-            feeding_status: EXCESS,
-            overall_health: CAUTION,
+            temperature_status: "normal",
+            ph_status: "high",
+            oxygen_status: "normal",
+            feeding_status: "excess",
+            overall_health: "caution",
             recommendations: vec![
                 "Reduce feeding frequency",
                 "Perform 25% water change",
@@ -107,11 +94,11 @@ pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
             tank_id: tank_id.to_string(),
             species_id: params.species_id.unwrap_or(0),
             timestamp: chrono::Utc::now().to_rfc3339(),
-            temperature_status: UNKNOWN,
-            ph_status: UNKNOWN,
-            oxygen_status: UNKNOWN,
-            feeding_status: UNKNOWN,
-            overall_health: UNKNOWN,
+            temperature_status: "unknown",
+            ph_status: "unknown",
+            oxygen_status: "unknown",
+            feeding_status: "unknown",
+            overall_health: "unknown",
             recommendations: vec![
                 "Verify tank ID",
                 "Setup monitoring system",

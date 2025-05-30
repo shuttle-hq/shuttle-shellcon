@@ -33,9 +33,6 @@ pub async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoRespo
     // PROBLEM: Creating a new client for each request (resource leak)
     let client = reqwest::Client::new();
     
-    // Set environment variable to track that we're NOT using the static client
-    std::env::set_var("USING_STATIC_CLIENT", "false");
-    
     // Log metrics about connection creation
     tracing::info!(
         request_id = %request_id,
@@ -116,11 +113,11 @@ pub async fn get_tank_readings(
     // Blocking implementation
     let io_start = std::time::Instant::now();
 
-    // Read tank configuration file using async I/O
-    let config = tokio::fs::read_to_string("./config/tank_settings.json").await
+    // Blocking implementation - this blocks the thread
+    let config = std::fs::read_to_string("./config/tank_settings.json")
         .unwrap_or_else(|_| "{}".to_string());
     // Simulate additional I/O latency in the blocking implementation
-    // std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(std::time::Duration::from_millis(100));
 
     // Parse summarized tank settings
     let settings: TankSettingsSummary = serde_json::from_str(&config).unwrap_or_default();

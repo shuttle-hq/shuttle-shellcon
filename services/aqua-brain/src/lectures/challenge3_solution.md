@@ -1,37 +1,75 @@
 ```rust
 // Before: Using String objects that allocate memory
-pub fn analyze_tank_conditions(temperature: f32, ph_level: f32) -> (String, String) {
-    let temp_status = if temperature > 26.0 {
-        String::from("warning")
-    } else {
-        String::from("normal")
-    };
+pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
+    // Get tank_id or default to Tank-A1
+    let tank_id = params.tank_id.as_deref().unwrap_or("Tank-A1");
     
-    let ph_status = if ph_level < 6.5 || ph_level > 8.0 {
-        String::from("warning")
-    } else {
-        String::from("normal")
-    };
-    
-    (temp_status, ph_status)
+    // Generate analysis result based on tank ID
+    match tank_id {
+        "Tank-A1" => AnalysisResult {
+            tank_id: tank_id.to_string(),
+            species_id: params.species_id.unwrap_or(1),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            temperature_status: String::from("warning"),
+            ph_status: String::from("critical"),
+            oxygen_status: String::from("normal"),
+            feeding_status: String::from("overdue"),
+            overall_health: String::from("at_risk"),
+            recommendations: vec![
+                "Reduce temperature by 2°C".to_string(),
+                "Adjust pH to 7.2-7.5 range".to_string(),
+                "Administer emergency feeding".to_string(),
+            ],
+        },
+        // Additional match arms omitted for brevity
+    }
 }
 
 // After: Using static string references to avoid allocation
-pub fn analyze_tank_conditions(temperature: f32, ph_level: f32) -> (&'static str, &'static str) {
-    let temp_status = if temperature > 26.0 {
-        "warning"
-    } else {
-        "normal"
-    };
+pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
+    // Get tank_id or default to Tank-A1
+    const NORMAL: &str = "normal";
+    const WARNING: &str = "warning";
+    const CRITICAL: &str = "critical";
+    const UNKNOWN: &str = "unknown";
+    const GOOD: &str = "good";
+    const CAUTION: &str = "caution";
+    const AT_RISK: &str = "at_risk";
+    const OVERDUE: &str = "overdue";
+    const EXCESS: &str = "excess";
+    const LOW: &str = "low";
+    const HIGH: &str = "high";
     
-    let ph_status = if ph_level < 6.5 || ph_level > 8.0 {
-        "warning"
-    } else {
-        "normal"
-    };
+    // Get tank_id or default to Tank-A1 using &str instead of String
+    let tank_id = params.tank_id.as_deref().unwrap_or("Tank-A1");
     
-    (temp_status, ph_status)
+    // Generate analysis result based on tank ID
+    match tank_id {
+        "Tank-A1" => AnalysisResult {
+            tank_id: tank_id.to_string(),
+            species_id: params.species_id.unwrap_or(1),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            temperature_status: WARNING,
+            ph_status: CRITICAL,
+            oxygen_status: NORMAL,
+            feeding_status: OVERDUE,
+            overall_health: AT_RISK,
+            recommendations: vec![
+                "Reduce temperature by 2°C",
+                "Adjust pH to 7.2-7.5 range",
+                "Administer emergency feeding",
+            ],
+        },
+        // Additional match arms omitted for brevity
+    }
 }
 ```
 
-This solution addresses memory usage by replacing dynamic String allocations with static string references (&'static str). When working with fixed, known string values, using references instead of creating new String objects for each function call significantly reduces memory allocations and improves performance. The &'static str type indicates that these string references have a 'static lifetime, meaning they live for the entire duration of the program, typically stored in the binary itself rather than on the heap.
+This solution addresses memory usage by replacing dynamic String allocations with static string references (&str). The key optimizations include:
+
+1. Defining constant string references (e.g., `const NORMAL: &str = "normal"`) at the beginning of the function
+2. Using these constants instead of calling `.to_string()` for status fields
+3. Using string literals directly in the recommendations vector instead of calling `.to_string()`
+4. Using `as_deref()` to get a string slice from an Option<String>
+
+When working with fixed, known string values, using references instead of creating new String objects for each function call significantly reduces memory allocations and improves performance.

@@ -167,12 +167,28 @@ async fn validate_challenge_solution(
     // Get the file content to check implementation patterns
     tracing::info!("Working directory: {:?}", std::env::current_dir());
     
-    // Read the current source file
-    let current_file = std::file!();
-    let challenge_file = match fs::read_to_string(current_file) {
+    // Read the challenges.rs file where the implementation is
+    let source_path = std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join("src/challenges.rs");
+    
+    // Log the full source path for debugging
+    tracing::info!(
+        request_id = %request_id,
+        source_path = %source_path.display(),
+        "Full source path for validation"
+    );
+    
+    // Read the source code file
+    let challenge_file = match fs::read_to_string(&source_path) {
         Ok(content) => content,
         Err(e) => {
-            tracing::error!("Failed to read source file: {}", e);
+            tracing::error!(
+                request_id = %request_id,
+                error = %e,
+                "Failed to read source code for validation"
+            );
+            // If we can't read the source, assume the challenge is not completed
             return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
                 "valid": false,
                 "message": format!("Error reading source file: {}", e)
@@ -226,47 +242,30 @@ async fn validate_challenge_solution(
     };
     tracing::info!("Challenge code excerpt: {}", excerpt);
     
-    // Function to check if a pattern exists in uncommented code
+    // Simple function to check if a pattern exists in uncommented code
     let is_uncommented = |pattern: &str| -> bool {
-        // Check each line for the pattern, ignoring commented lines
-        challenge_code.lines().any(|line| {
-            let trimmed = line.trim();
-            trimmed.contains(pattern) && !trimmed.starts_with("//")
-        })
+        challenge_code.lines()
+            .filter(|line| !line.trim().starts_with("//"))
+            .any(|line| line.contains(pattern))
     };
     
-    // Check for specific patterns
-    let has_tokio_fs = challenge_code.contains("tokio::fs");
-    let has_async_std_fs = challenge_code.contains("async_std::fs");
-    let has_await = challenge_code.contains(".await");
-    let has_read_to_string = challenge_code.contains("read_to_string");
-    let has_read_file = challenge_code.contains("read_file");
-    let has_thread_sleep = challenge_code.contains("thread::sleep");
-    let has_uncommented_thread_sleep = is_uncommented("std::thread::sleep");
-    let has_std_fs_read = challenge_code.contains("std::fs::read");
-    let has_uncommented_std_fs_read = is_uncommented("std::fs::read");
-    
-    tracing::info!(
-        request_id = %request_id,
-        has_tokio_fs = has_tokio_fs,
-        has_async_std_fs = has_async_std_fs,
-        has_await = has_await, 
-        has_read_to_string = has_read_to_string,
-        has_read_file = has_read_file,
-        has_thread_sleep = has_thread_sleep,
-        has_uncommented_thread_sleep = has_uncommented_thread_sleep,
-        has_std_fs_read = has_std_fs_read,
-        has_uncommented_std_fs_read = has_uncommented_std_fs_read,
-        "Detailed pattern detection"
-    );
-    
-    // Check for async file operations (multiple possible implementations)
-    let uses_async_io = has_tokio_fs || 
-                       has_async_std_fs || 
-                       (has_await && (has_read_to_string || has_read_file));
+    // Check for key implementation patterns
+    let uses_async_io = is_uncommented("tokio::fs") || 
+                       is_uncommented("async_std::fs") || 
+                       (is_uncommented(".await") && 
+                        (is_uncommented("read_to_string") || is_uncommented("read_file")));
     
     // Check for absence of blocking operations
-    let no_blocking_operations = !has_uncommented_thread_sleep && !has_uncommented_std_fs_read;
+    let no_blocking_operations = !is_uncommented("std::thread::sleep") && 
+                               !is_uncommented("std::fs::read");
+    
+    // Log the key findings
+    tracing::info!(
+        request_id = %request_id,
+        uses_async_io = uses_async_io,
+        no_blocking_operations = no_blocking_operations,
+        "Challenge validation check results"
+    );
     
     // Log what we're finding in the challenge code
     tracing::info!(
@@ -381,27 +380,22 @@ async fn validate_resource_leak_solution(
     let has_static_client = source_code.contains("static HTTP_CLIENT") || 
                             source_code.contains("static CLIENT");
     
-    // Function to check if a pattern exists in uncommented code
+    // Simple function to check if a pattern exists in uncommented code
     let is_uncommented = |pattern: &str| -> bool {
-        // Check each line for the pattern, ignoring commented lines
-        challenge_code.lines().any(|line| {
-            let trimmed = line.trim();
-            trimmed.contains(pattern) && !trimmed.starts_with("//")
-        })
+        challenge_code.lines()
+            .filter(|line| !line.trim().starts_with("//"))
+            .any(|line| line.contains(pattern))
     };
     
     // Check for use of static client instead of creating new client
-    let uses_static_client = challenge_code.contains("&*HTTP_CLIENT") || 
-                             challenge_code.contains("HTTP_CLIENT.") ||
-                             challenge_code.contains("&*CLIENT") ||
-                             challenge_code.contains("CLIENT.");
-    
-    // Check for absence of new client creation in uncommented code
-    let has_uncommented_new_client = is_uncommented("Client::new()") && 
-                                    !challenge_code.contains("Lazy::new");
+    let uses_static_client = is_uncommented("&*HTTP_CLIENT") || 
+                             is_uncommented("HTTP_CLIENT.") ||
+                             is_uncommented("&*CLIENT") ||
+                             is_uncommented("CLIENT.");
     
     // No new client if either there's no Client::new() call at all, or it's only used with Lazy::new
-    let no_new_client = !has_uncommented_new_client;
+    let no_new_client = !is_uncommented("Client::new()") || 
+                        challenge_code.contains("Lazy::new");
     
     // Log what we're finding in the challenge code
     tracing::info!(
