@@ -1,32 +1,32 @@
 # Challenge 2: Database Dilemma
 
 ## The Situation
-The species database is returning incomplete information, making it impossible to determine optimal conditions for each species. This is preventing proper environmental control for rare species, putting them at risk.
+The species search functionality is experiencing performance issues, particularly when searching by name or scientific name. The search is becoming increasingly slow as the species database grows.
 
 ## Technical Issue
-The species lookup API is performing poorly, with high query times and incomplete results. The problem appears to be in the `get_species` function in the species-hub service.
+The `get_species` function in the species-hub service (in `src/challenges.rs`) is using non-indexed LIKE queries, causing full table scans and poor performance.
 
 ## Your Task
-Optimize the database query in the `get_species` function in the species-hub service (in `src/main.rs`).
+Optimize the database queries in the `get_species` function by implementing proper indexing and efficient search patterns.
 
 ## Hints
-1. Look at how the LIKE queries are being used
-2. Check for missing database indexes
-3. Review the SQL query structure for inefficiencies
-4. The tracing metrics show high database query times
+1. Look at how case-sensitive LIKE queries are being used
+2. Consider using PostgreSQL's trigram indexes for text search
+3. Review the query execution plan using EXPLAIN ANALYZE
+4. Check the tracing metrics for query duration
 
 ## Testing Your Solution
 After implementing your fix:
-1. Add any necessary database indexes in a migration file
-2. Redeploy the service with `shuttle deploy`
-3. Visit the dashboard and check if the Species Database system status has improved
-4. Look at the metrics panel to see if database query time has decreased
+1. Create appropriate indexes for text search
+2. Use case-insensitive search where appropriate
+3. Verify improved query performance with EXPLAIN ANALYZE
+4. Check that the search still works correctly with partial matches
 
 ## Learning Outcomes
 This challenge teaches database optimization techniques in Rust applications:
-- Proper use of database indexes
-- Optimizing SQL queries with LIKE statements
-- Using EXPLAIN to analyze query performance
-- Measuring query performance with metrics
+- Implementing efficient text search in PostgreSQL
+- Using appropriate index types (B-tree, GIN, GiST)
+- Understanding query execution plans
+- Balancing between search flexibility and performance
 
-Good luck! The rare Marbled Crayfish is particularly sensitive to improper tank conditions and needs your help.
+Good luck! Our growing collection of aquatic species needs an efficient catalog system.

@@ -1,31 +1,32 @@
-# Challenge 3: Feeding Frenzy Failure
+# Challenge 3: Memory Matters
 
 ## The Situation
-The automated feeding system crashes when dispensing certain types of food, leading to inconsistent feeding patterns. Some crustaceans haven't been fed in days, while others are being overfed.
+The analysis system is experiencing high memory usage, particularly when generating analysis results for multiple tanks. The excessive memory allocation is causing performance issues and potential out-of-memory risks.
 
 ## Technical Issue
-The feeding schedule API is crashing due to poor error handling in the `get_feeding_schedule` function in the species-hub service.
+The `get_analysis_result` function in the aqua-brain service (in `src/challenges.rs`) is creating unnecessary String objects for every analysis result, leading to excessive memory allocation.
 
 ## Your Task
-Implement proper error handling in the `get_feeding_schedule` function in the species-hub service (in `src/main.rs`).
+Optimize the memory usage in the `get_analysis_result` function by using static string references instead of creating new String objects.
 
 ## Hints
-1. Look for `panic!` calls that should be handled gracefully
-2. Consider implementing proper Rust error handling with Result types
-3. Make sure errors are reported to the client with appropriate status codes
-4. Use the `?` operator for concise error propagation
+1. Look for unnecessary String allocations
+2. Consider using string literals (&str) for static text
+3. Identify opportunities to reuse static strings
+4. Pay attention to where .to_string() is being used
 
 ## Testing Your Solution
 After implementing your fix:
-1. Redeploy the service with `shuttle deploy`
-2. Visit the dashboard and check if the Feeding System status has improved
-3. Verify that the system now handles error cases gracefully rather than crashing
+1. Replace String allocations with static references where possible
+2. Use const declarations for frequently used strings
+3. Verify that the analysis results are still correct
+4. Monitor memory usage improvement
 
 ## Learning Outcomes
-This challenge teaches proper error handling in Rust web services:
-- Using the `?` operator for error propagation
-- Creating custom error types with thiserror
-- Returning appropriate HTTP status codes for different error cases
-- Avoiding panics in production code
+This challenge teaches memory optimization in Rust applications:
+- Understanding String vs &str trade-offs
+- Using static string references efficiently
+- Identifying and eliminating unnecessary allocations
+- Implementing memory-efficient data structures
 
-Good luck! The feeding system is critical for the well-being of all specimens.
+Good luck! Every byte counts when analyzing thousands of tank parameters.

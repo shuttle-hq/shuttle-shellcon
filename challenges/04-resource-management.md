@@ -1,31 +1,32 @@
-# Challenge 4: Connection Conundrum
+# Challenge 4: Resource Leak
 
 ## The Situation
-The system connecting to remote tank sensors keeps failing, leaving critical tanks unmonitored. Connections work initially but degrade over time, eventually causing complete monitoring failures.
+The tank sensor monitoring system is experiencing degraded performance and occasional failures. The system works initially but becomes increasingly unstable over time.
 
 ## Technical Issue
-The sensor status API is creating a new HTTP client for every request, causing resource leakage. The problem is in the `get_sensor_status` function in the aqua-monitor service.
+The `get_sensor_status` function in the aqua-monitor service (in `src/challenges.rs`) is creating a new HTTP client for each request, leading to resource leaks and connection pool exhaustion.
 
 ## Your Task
-Fix the resource management in the `get_sensor_status` function in the aqua-monitor service (in `src/main.rs`).
+Implement proper resource management by using a shared HTTP client instead of creating a new one for each request.
 
 ## Hints
-1. Look for instances of creating new clients for every request
-2. Consider using a shared, reusable client
-3. The `once_cell` crate can be useful for static initialization
-4. Check the tracing metrics to see active connection counts
+1. Look for `reqwest::Client::new()` calls in request handling
+2. Consider using `once_cell` for a shared client instance
+3. Implement proper connection pooling
+4. Check the tracing metrics for client creation events
 
 ## Testing Your Solution
 After implementing your fix:
-1. Redeploy the service with `shuttle deploy`
-2. Visit the dashboard and check if the Remote Monitoring system status has improved
-3. Look at the metrics panel to see if active connection count has stabilized
+1. Verify that only one HTTP client is created
+2. Ensure the client is properly shared across requests
+3. Check that connection pooling is working
+4. Monitor resource usage over time
 
 ## Learning Outcomes
-This challenge teaches proper resource management in Rust applications:
-- Using shared, reusable HTTP clients
-- Managing connection pools efficiently
-- Using once_cell for lazy static initialization
-- Monitoring resource usage with metrics
+This challenge teaches proper resource management in Rust services:
+- Implementing singleton patterns with once_cell
+- Managing HTTP client lifecycles
+- Understanding connection pooling
+- Preventing resource leaks in web services
 
-Good luck! The remote tanks contain some of the most sensitive specimens and need constant monitoring.
+Good luck! Efficient resource management is crucial for stable monitoring systems.
