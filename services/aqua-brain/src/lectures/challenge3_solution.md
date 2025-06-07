@@ -59,9 +59,6 @@ pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
     const AT_RISK: &str = "at_risk";
     const UNKNOWN: &str = "unknown";
 
-    // Get tank_id, still needs to be a String due to the API requirements
-    let tank_id = params.tank_id.clone().unwrap_or_else(|| "Tank-A1".to_string());
-    
     // Define static recommendation strings
     const REC_TEMP: &str = "Reduce temperature by 2°C";
     const REC_PH: &str = "Adjust pH to 7.2-7.5 range";
@@ -69,33 +66,36 @@ pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
     const REC_VERIFY: &str = "Verify tank ID";
     const REC_SETUP: &str = "Setup monitoring system";
 
-    // Create recommendations using static references
-    let recommendations = vec![REC_TEMP.to_string(), REC_PH.to_string(), REC_FEED.to_string()];
+    // Get tank_id or default to Tank-A1
+    let tank_id = params.tank_id.clone().unwrap_or_else(|| "Tank-A1".into());
+    
+    // Prepare recommendations using static references converted to String
+    let recommendations: Vec<String> = vec![REC_TEMP.into(), REC_PH.into(), REC_FEED.into()];
 
     match tank_id.as_str() {
         "Tank-A1" => AnalysisResult {
             tank_id: tank_id.clone(),
             species_id: params.species_id.unwrap_or(1),
             timestamp: chrono::Utc::now().to_rfc3339(),
-            temperature_status: WARNING.to_string(),
-            ph_status: CRITICAL.to_string(),
-            oxygen_status: NORMAL.to_string(),
-            feeding_status: OVERDUE.to_string(),
-            overall_health: AT_RISK.to_string(),
-            recommendations,
+            temperature_status: WARNING.into(),
+            ph_status: CRITICAL.into(),
+            oxygen_status: NORMAL.into(),
+            feeding_status: OVERDUE.into(),
+            overall_health: AT_RISK.into(),
+            recommendations: recommendations.clone(),
         },
         _ => AnalysisResult {
             tank_id: tank_id.clone(),
             species_id: params.species_id.unwrap_or(0),
             timestamp: chrono::Utc::now().to_rfc3339(),
-            temperature_status: UNKNOWN.to_string(),
-            ph_status: UNKNOWN.to_string(),
-            oxygen_status: UNKNOWN.to_string(),
-            feeding_status: UNKNOWN.to_string(),
-            overall_health: UNKNOWN.to_string(),
+            temperature_status: UNKNOWN.into(),
+            ph_status: UNKNOWN.into(),
+            oxygen_status: UNKNOWN.into(),
+            feeding_status: UNKNOWN.into(),
+            overall_health: UNKNOWN.into(),
             recommendations: vec![
-                REC_VERIFY.to_string(),
-                REC_SETUP.to_string(),
+                REC_VERIFY.into(),
+                REC_SETUP.into(),
             ],
         },
     }
