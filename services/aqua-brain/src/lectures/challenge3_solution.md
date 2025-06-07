@@ -2,23 +2,23 @@
 // Before: Using String objects that allocate memory
 pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
     // Get tank_id or default to Tank-A1
-    let tank_id = params.tank_id.as_deref().unwrap_or("Tank-A1");
+    let tank_id = params.tank_id.clone().unwrap_or_else(|| "Tank-A1".to_string());
     
     // Generate analysis result based on tank ID
-    match tank_id {
+    match tank_id.as_str() {
         "Tank-A1" => AnalysisResult {
             tank_id: tank_id.to_string(),
             species_id: params.species_id.unwrap_or(1),
             timestamp: chrono::Utc::now().to_rfc3339(),
-            temperature_status: String::from("warning"),
-            ph_status: String::from("critical"),
-            oxygen_status: String::from("normal"),
-            feeding_status: String::from("overdue"),
-            overall_health: String::from("at_risk"),
+            temperature_status: "warning",
+            ph_status: "critical",
+            oxygen_status: "normal",
+            feeding_status: "overdue",
+            overall_health: "at_risk",
             recommendations: vec![
-                "Reduce temperature by 2°C".to_string(),
-                "Adjust pH to 7.2-7.5 range".to_string(),
-                "Administer emergency feeding".to_string(),
+                "Reduce temperature by 2°C",
+                "Adjust pH to 7.2-7.5 range",
+                "Administer emergency feeding",
             ],
         },
         // Additional match arms omitted for brevity
