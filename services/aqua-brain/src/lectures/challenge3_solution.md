@@ -1,75 +1,169 @@
+# Challenge 3: Memory Optimization - Solutions
+
+## Original Code with Excessive Allocations
+
 ```rust
-// Before: Using String objects that allocate memory
+// Before: Using dynamic String allocations for analysis results
 pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
-    // Get tank_id or default to Tank-A1
     let tank_id = params.tank_id.clone().unwrap_or_else(|| "Tank-A1".to_string());
-    
-    // Generate analysis result based on tank ID
+    let temperature_status = "warning".to_string();
+    let ph_status = "critical".to_string();
+    let oxygen_status = "normal".to_string();
+    let feeding_status = "overdue".to_string();
+    let overall_health = "at_risk".to_string();
+    let mut recommendations: Vec<String> = Vec::new();
+    recommendations.push("Reduce temperature by 2°C".to_string());
+    recommendations.push("Adjust pH to 7.2-7.5 range".to_string());
+    recommendations.push("Administer emergency feeding".to_string());
+
     match tank_id.as_str() {
         "Tank-A1" => AnalysisResult {
-            tank_id: tank_id.to_string(),
+            tank_id: tank_id.clone(),
             species_id: params.species_id.unwrap_or(1),
             timestamp: chrono::Utc::now().to_rfc3339(),
-            temperature_status: "warning",
-            ph_status: "critical",
-            oxygen_status: "normal",
-            feeding_status: "overdue",
-            overall_health: "at_risk",
-            recommendations: vec![
-                "Reduce temperature by 2°C",
-                "Adjust pH to 7.2-7.5 range",
-                "Administer emergency feeding",
-            ],
+            temperature_status,
+            ph_status,
+            oxygen_status,
+            feeding_status,
+            overall_health,
+            recommendations: recommendations.clone(),
         },
-        // Additional match arms omitted for brevity
-    }
-}
-
-// After: Using static string references to avoid allocation
-pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
-    // Get tank_id or default to Tank-A1
-    const NORMAL: &str = "normal";
-    const WARNING: &str = "warning";
-    const CRITICAL: &str = "critical";
-    const UNKNOWN: &str = "unknown";
-    const GOOD: &str = "good";
-    const CAUTION: &str = "caution";
-    const AT_RISK: &str = "at_risk";
-    const OVERDUE: &str = "overdue";
-    const EXCESS: &str = "excess";
-    const LOW: &str = "low";
-    const HIGH: &str = "high";
-    
-    // Get tank_id or default to Tank-A1 using &str instead of String
-    let tank_id = params.tank_id.as_deref().unwrap_or("Tank-A1");
-    
-    // Generate analysis result based on tank ID
-    match tank_id {
-        "Tank-A1" => AnalysisResult {
-            tank_id: tank_id.to_string(),
-            species_id: params.species_id.unwrap_or(1),
+        _ => AnalysisResult {
+            tank_id: tank_id.clone(),
+            species_id: params.species_id.unwrap_or(0),
             timestamp: chrono::Utc::now().to_rfc3339(),
-            temperature_status: WARNING,
-            ph_status: CRITICAL,
-            oxygen_status: NORMAL,
-            feeding_status: OVERDUE,
-            overall_health: AT_RISK,
+            temperature_status: "unknown".to_string(),
+            ph_status: "unknown".to_string(),
+            oxygen_status: "unknown".to_string(),
+            feeding_status: "unknown".to_string(),
+            overall_health: "unknown".to_string(),
             recommendations: vec![
-                "Reduce temperature by 2°C",
-                "Adjust pH to 7.2-7.5 range",
-                "Administer emergency feeding",
+                "Verify tank ID".to_string(),
+                "Setup monitoring system".to_string(),
             ],
         },
-        // Additional match arms omitted for brevity
     }
 }
 ```
 
-This solution addresses memory usage by replacing dynamic String allocations with static string references (&str). The key optimizations include:
+## Solution 1: Using Static String References
 
-1. Defining constant string references (e.g., `const NORMAL: &str = "normal"`) at the beginning of the function
-2. Using these constants instead of calling `.to_string()` for status fields
-3. Using string literals directly in the recommendations vector instead of calling `.to_string()`
-4. Using `as_deref()` to get a string slice from an Option<String>
+```rust
+// After: Using static string references to eliminate allocations
+pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
+    // Define static references for commonly used strings
+    const WARNING: &str = "warning";
+    const CRITICAL: &str = "critical";
+    const NORMAL: &str = "normal";
+    const OVERDUE: &str = "overdue";
+    const AT_RISK: &str = "at_risk";
+    const UNKNOWN: &str = "unknown";
 
-When working with fixed, known string values, using references instead of creating new String objects for each function call significantly reduces memory allocations and improves performance.
+    // Get tank_id, still needs to be a String due to the API requirements
+    let tank_id = params.tank_id.clone().unwrap_or_else(|| "Tank-A1".to_string());
+    
+    // Define static recommendation strings
+    const REC_TEMP: &str = "Reduce temperature by 2°C";
+    const REC_PH: &str = "Adjust pH to 7.2-7.5 range";
+    const REC_FEED: &str = "Administer emergency feeding";
+    const REC_VERIFY: &str = "Verify tank ID";
+    const REC_SETUP: &str = "Setup monitoring system";
+
+    // Create recommendations using static references
+    let recommendations = vec![REC_TEMP.to_string(), REC_PH.to_string(), REC_FEED.to_string()];
+
+    match tank_id.as_str() {
+        "Tank-A1" => AnalysisResult {
+            tank_id: tank_id.clone(),
+            species_id: params.species_id.unwrap_or(1),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            temperature_status: WARNING.to_string(),
+            ph_status: CRITICAL.to_string(),
+            oxygen_status: NORMAL.to_string(),
+            feeding_status: OVERDUE.to_string(),
+            overall_health: AT_RISK.to_string(),
+            recommendations,
+        },
+        _ => AnalysisResult {
+            tank_id: tank_id.clone(),
+            species_id: params.species_id.unwrap_or(0),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            temperature_status: UNKNOWN.to_string(),
+            ph_status: UNKNOWN.to_string(),
+            oxygen_status: UNKNOWN.to_string(),
+            feeding_status: UNKNOWN.to_string(),
+            overall_health: UNKNOWN.to_string(),
+            recommendations: vec![
+                REC_VERIFY.to_string(),
+                REC_SETUP.to_string(),
+            ],
+        },
+    }
+}
+```
+
+## Solution 2: Using String Interning
+
+```rust
+// After: Using string interning to eliminate duplicate allocations
+use internment::Intern;
+pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
+    let tank_id = Intern::new(params.tank_id.unwrap_or_else(|| "Tank-A1".to_string()));
+
+    // Intern status strings
+    let warning = Intern::new("warning".to_string());
+    let critical = Intern::new("critical".to_string());
+    let normal = Intern::new("normal".to_string());
+    let overdue = Intern::new("overdue".to_string());
+    let at_risk = Intern::new("at_risk".to_string());
+
+    // Intern recommendations
+    let rec1 = Intern::new("Reduce temperature by 2°C".to_string());
+    let rec2 = Intern::new("Adjust pH to 7.2-7.5 range".to_string());
+    let rec3 = Intern::new("Administer emergency feeding".to_string());
+    let recommendations: Vec<Intern<String>> = vec![rec1.clone(), rec2.clone(), rec3.clone()];
+
+    if *tank_id == Intern::new("Tank-A1".to_string()) {
+        AnalysisResult {
+            tank_id: tank_id.clone(),
+            species_id: params.species_id.unwrap_or(1),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            temperature_status: warning.clone(),
+            ph_status: critical.clone(),
+            oxygen_status: normal.clone(),
+            feeding_status: overdue.clone(),
+            overall_health: at_risk.clone(),
+            recommendations: recommendations.clone(),
+        }
+    } else {
+        AnalysisResult {
+            tank_id: tank_id.clone(),
+            species_id: params.species_id.unwrap_or(0),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            temperature_status: Intern::new("unknown".to_string()),
+            ph_status: Intern::new("unknown".to_string()),
+            oxygen_status: Intern::new("unknown".to_string()),
+            feeding_status: Intern::new("unknown".to_string()),
+            overall_health: Intern::new("unknown".to_string()),
+            recommendations: vec![
+                Intern::new("Verify tank ID".to_string()),
+                Intern::new("Setup monitoring system".to_string()),
+            ],
+        }
+    }
+}
+```
+
+## Comparing the Solutions
+
+### Solution 1: Static String References
+- **Pros**: Simple to implement, no external dependencies, very memory efficient for static text
+- **Cons**: Still requires some `.to_string()` calls when creating the `AnalysisResult` since it needs `String` values
+- **Best for**: Simpler systems without extremely repetitive string values
+
+### Solution 2: String Interning
+- **Pros**: More efficient for highly repetitive strings, eliminates heap allocations for duplicates
+- **Cons**: Adds dependency on the `internment` crate, slightly more complex implementation
+- **Best for**: Systems with many duplicate string values across larger datasets
+
+Both solutions significantly reduce memory usage by eliminating unnecessary string allocations, with the interning approach being more sophisticated and potentially more efficient at scale.

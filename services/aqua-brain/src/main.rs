@@ -133,12 +133,12 @@ struct AnalysisResult {
     tank_id: String,
     species_id: i32,
     timestamp: String,
-    temperature_status: &'static str,
-    ph_status: &'static str,
-    oxygen_status: &'static str,
-    feeding_status: &'static str,
-    overall_health: &'static str,
-    recommendations: Vec<&'static str>,
+    temperature_status: String,
+    ph_status: String,
+    oxygen_status: String,
+    feeding_status: String,
+    overall_health: String,
+    recommendations: Vec<String>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -244,7 +244,7 @@ async fn get_current_challenge() -> impl IntoResponse {
             name: "database-optimization".to_string(),
             title: "The Slow Query".to_string(),
             description: "The species search functionality is extremely slow when users search for partial names. Database queries are taking too long, especially for text searches.".to_string(),
-            hint: "The issue is with how text search is being performed in the database. Look at how the SQL query is constructed in the species_hub service. Consider using PostgreSQL's full-text search capabilities and appropriate indexing strategies.".to_string(),
+            hint: "The issue is with how text search is being performed in the database. Look at how case-sensitivity is handled in the SQL queries. PostgreSQL offers operators for more efficient case-insensitive pattern matching that would improve search performance.".to_string(),
             service: "species-hub".to_string(),
             file: "src/challenges.rs".to_string(),
             function: "search_species".to_string(),
@@ -261,7 +261,7 @@ async fn get_current_challenge() -> impl IntoResponse {
             name: "memory-optimization".to_string(),
             title: "The Memory Hog".to_string(),
             description: "The analysis engine is using excessive memory, particularly when calculating status reports for multiple tanks. The issue seems to be with how strings are handled.".to_string(),
-            hint: "Examine how strings are created and returned in the tank analysis functions. Instead of creating new String instances for every status report, consider using static string references (&'static str) for fixed, known values.".to_string(),
+            hint: "Examine how strings are created and returned in the tank analysis functions. Reduce memory usage by either: 1) using static string references (&'static str) for fixed values, or 2) implementing string interning with the internment crate to deduplicate repeated strings.".to_string(),
             service: "aqua-brain".to_string(),
             file: "src/challenges.rs".to_string(),
             function: "analyze_tank_conditions".to_string(),
@@ -330,7 +330,7 @@ struct TankSummary {
     tank_id: String,
     species_id: i32,
     species_name: String,
-    overall_health: &'static str,
+    overall_health: String,
     timestamp: String,
 }
 
@@ -521,20 +521,22 @@ async fn validate_memory_optimization(
         .filter(|line| line.contains(".to_string()"))
         .count();
     
-    // Check for the use of &str instead of String in uncommented code
+    // Check for the use of optimized string handling (either &str or internment)
     let uses_str_type = is_uncommented("&str") || is_uncommented("&'static str");
+    let uses_interning = is_uncommented("Intern::") || is_uncommented("internment::");
     
     // Log what we're finding in the challenge code
     tracing::info!(
         request_id = %request_id,
         to_string_count = to_string_count,
         uses_str_type = uses_str_type,
+        uses_interning = uses_interning,
         "Challenge code check results"
     );
     
     // The challenge is completed if the number of .to_string() calls is significantly reduced
-    // and &str type is used instead
-    let is_valid = to_string_count < 10 && uses_str_type;
+    // and either &str or interning is used
+    let is_valid = to_string_count < 10 && (uses_str_type || uses_interning);
     
     tracing::info!(
         request_id = %request_id,
@@ -548,7 +550,7 @@ async fn validate_memory_optimization(
         "message": if is_valid {
             "Solution correctly implemented! Memory usage is now optimized."
         } else {
-            "Solution validation failed. Please optimize memory usage by using static string references instead of creating new String objects."
+            "Solution validation failed. Please optimize memory usage by using either static string references or string interning instead of creating new String objects."
         },
         "system_component": {
             "name": "Analysis Engine",

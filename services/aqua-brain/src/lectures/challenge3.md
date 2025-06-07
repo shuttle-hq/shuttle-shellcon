@@ -13,10 +13,11 @@ let greeting = String::from("Hello");  // Memory allocated on the heap
 // Using a string reference (&str) just points to existing data
 let greeting = "Hello";  // No allocation - points to data in program binary
 
-## The Static String Reference Solution
+## Solution 1: Static String References
 
 Instead of making copies, you can use references to point to existing strings, especially for text that does not change:
 
+```rust
 // Before: Creating many String objects
 fn get_status() -> String {
     if temperature > threshold {
@@ -36,6 +37,26 @@ fn get_status() -> &'static str {
     } else {
         NORMAL   // No allocation - reuses the same memory
     }
+}
+```
+
+## Solution 2: String Interning
+
+For more advanced scenarios where you still need `String` values (not references) but want to avoid duplicate allocations, string interning is an excellent solution. This technique stores each unique string only once in a central location:
+
+```rust
+use internment::Intern;
+
+// Before: Creating many String objects
+fn get_status(id: &str) -> String {
+    String::from("warning")  // New allocation each time
+}
+
+// After: Using string interning
+fn get_status(id: &str) -> Intern<String> {
+    // This only allocates once for each unique string value
+    // All other instances point to the same memory
+    Intern::new("warning".to_string()) 
 }
 ```
 

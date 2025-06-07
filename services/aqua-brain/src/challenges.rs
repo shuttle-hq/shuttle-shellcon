@@ -39,73 +39,48 @@ pub async fn test_challenge_1() -> impl IntoResponse {
 
 // ⚠️ CHALLENGE #3: MEMORY OPTIMIZATION ⚠️
 // This function creates new String objects for every analysis result
-// Your task: Optimize memory usage by using static string references instead of creating new String objects
+// Your task: Optimize memory usage by replacing dynamic String allocations with static &str references
 pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
     // Get tank_id or default to Tank-A1
     let tank_id = params.tank_id.clone().unwrap_or_else(|| "Tank-A1".to_string());
-    
+    // Dynamically allocate status and recommendation strings
+    let temperature_status = "warning".to_string();
+    let ph_status = "critical".to_string();
+    let oxygen_status = "normal".to_string();
+    let feeding_status = "overdue".to_string();
+    let overall_health = "at_risk".to_string();
+    let mut recommendations: Vec<String> = Vec::new();
+    recommendations.push("Reduce temperature by 2°C".to_string());
+    recommendations.push("Adjust pH to 7.2-7.5 range".to_string());
+    recommendations.push("Administer emergency feeding".to_string());
+
     // Generate analysis result based on tank ID
     match tank_id.as_str() {
         "Tank-A1" => AnalysisResult {
-            tank_id: tank_id.to_string(),
+            tank_id: tank_id.clone(),
             species_id: params.species_id.unwrap_or(1),
             timestamp: chrono::Utc::now().to_rfc3339(),
-            temperature_status: "warning",
-            ph_status: "critical",
-            oxygen_status: "normal",
-            feeding_status: "overdue",
-            overall_health: "at_risk",
-            recommendations: vec![
-                "Reduce temperature by 2°C",
-                "Adjust pH to 7.2-7.5 range",
-                "Administer emergency feeding",
-            ],
-        },
-        "Tank-B2" => AnalysisResult {
-            tank_id: tank_id.to_string(),
-            species_id: params.species_id.unwrap_or(2),
-            timestamp: chrono::Utc::now().to_rfc3339(),
-            temperature_status: "normal",
-            ph_status: "normal",
-            oxygen_status: "low",
-            feeding_status: "normal",
-            overall_health: "good",
-            recommendations: vec![
-                "Increase aeration slightly",
-                "Monitor oxygen levels daily",
-            ],
-        },
-        "Tank-C3" => AnalysisResult {
-            tank_id: tank_id.to_string(),
-            species_id: params.species_id.unwrap_or(3),
-            timestamp: chrono::Utc::now().to_rfc3339(),
-            temperature_status: "normal",
-            ph_status: "high",
-            oxygen_status: "normal",
-            feeding_status: "excess",
-            overall_health: "caution",
-            recommendations: vec![
-                "Reduce feeding frequency",
-                "Perform 25% water change",
-                "Test ammonia levels",
-            ],
+            temperature_status,
+            ph_status,
+            oxygen_status,
+            feeding_status,
+            overall_health,
+            recommendations: recommendations.clone(),
         },
         _ => AnalysisResult {
-            tank_id: tank_id.to_string(),
+            tank_id: tank_id.clone(),
             species_id: params.species_id.unwrap_or(0),
             timestamp: chrono::Utc::now().to_rfc3339(),
-            temperature_status: "unknown",
-            ph_status: "unknown",
-            oxygen_status: "unknown",
-            feeding_status: "unknown",
-            overall_health: "unknown",
+            temperature_status: "unknown".to_string(),
+            ph_status: "unknown".to_string(),
+            oxygen_status: "unknown".to_string(),
+            feeding_status: "unknown".to_string(),
+            overall_health: "unknown".to_string(),
             recommendations: vec![
-                "Verify tank ID",
-                "Setup monitoring system",
+                "Verify tank ID".to_string(),
+                "Setup monitoring system".to_string(),
             ],
         },
     }
 }
 // ⚠️ END CHALLENGE CODE ⚠️
-
-
