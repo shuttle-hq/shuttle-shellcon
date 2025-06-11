@@ -1,4 +1,4 @@
-# Resource Management in Rust: A Guide to Static HTTP Clients
+# Resource Management in Rust: A Guide to Shared HTTP Clients
 
 ## Understanding the Problem: Why Creating New HTTP Clients is Inefficient
 
@@ -12,69 +12,114 @@ Creating a new client for each request:
 - Wastes file descriptors (limited system resource)
 - Requires new TCP handshakes for each request
 
-## The Solution: Static HTTP Clients
+## The Solution: Shared HTTP Clients
 
 Instead of creating a new client for each request, create one client once and reuse it for all requests.
 
-## Implementation with once_cell
+## Best Implementation: Axum's Application State Pattern
 
-The once_cell crate provides a way to create a static variable initialized only once:
+The recommended approach for Axum applications is to store the HTTP client in the application state:
 
 ```rust
-// First, add the dependency to your Cargo.toml:
-// once_cell = "1.8.0"
-
-// In your code file:
-use once_cell::sync::Lazy;
+use axum::{routing::get, Router, extract::State};
 use reqwest::Client;
+use std::sync::Arc;
 
-// Define a static HTTP client
-static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
-    // This closure runs only once
-    Client::new()
-});
-
-// Then use it in your functions
-async fn get_data() -> Result<String, Error> {
-    // Reuse the shared client - no new allocation!
-    let response = HTTP_CLIENT.get("https://api.example.com/data").send().await?;
-    response.text().await
+// Define your state structure to hold shared resources
+pub struct AppState {
+    client: Client,
+    // ...other shared resources
 }
 
-## Implementation with lazy_static
+// In your main function
+async fn main() {
+    // Create the client once during application startup
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .expect("Failed to build HTTP client");
+    
+    // Create your application state with the client
+    let state = AppState { client };
+    
+    // Use the state in your router
+    let app = Router::new()
+        .route("/api/data", get(get_data))
+        .with_state(state);
+        
+    // Start the server
+    // ...
+}
 
-An older but still common approach:
-
-// Add to Cargo.toml:
-// lazy_static = "1.4.0"
-
-use lazy_static::lazy_static;
-use reqwest::Client;
-
-lazy_static! {
-    static ref HTTP_CLIENT: Client = Client::new();
+// Then in your handler functions, access the client via State
+async fn get_data(State(state): State<AppState>) -> impl IntoResponse {
+    // Access the shared client from the state
+    let client = &state.client;
+    
+    // Use the client to make requests
+    let response = client.get("https://api.example.com/data")
+        .send()
+        .await?
+        .text()
+        .await?;
+        
+    // Return the response
+    Json(response)
 }
 ```
 
-## Configuring Your Static Client
+## Alternative Approaches
 
-For production use, configure your client properly:
+### Using std::sync::LazyLock (Rust 1.70+)
+
+For non-Axum contexts or when you need a global client, use the standard library's `LazyLock`:
 
 ```rust
-static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
+use std::sync::LazyLock;
+use reqwest::Client;
+
+// Define a static HTTP client with standard library facilities
+static HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| {
     Client::builder()
         .timeout(std::time::Duration::from_secs(30))
-        .connect_timeout(std::time::Duration::from_secs(5))
-        .pool_max_idle_per_host(10)
-        .pool_idle_timeout(std::time::Duration::from_secs(60))
         .build()
         .expect("Failed to build HTTP client")
 });
 ```
 
+### Using once_cell (Older Approach)
+
+For older Rust versions (pre-1.70):
+
+```rust
+use once_cell::sync::Lazy;
+use reqwest::Client;
+
+static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
+    Client::new()
+});
+```
+
+## Configuring Your HTTP Client
+
+For production use, configure your client properly:
+
+```rust
+// When using Axum's state pattern:
+let client = Client::builder()
+    .timeout(std::time::Duration::from_secs(30))
+    .connect_timeout(std::time::Duration::from_secs(5))
+    .pool_max_idle_per_host(10)
+    .pool_idle_timeout(std::time::Duration::from_secs(60))
+    .build()
+    .expect("Failed to build HTTP client");
+    
+let state = AppState { client };
+```
+
 ## Performance Benefits
 
-Real-world improvements with static clients:
+Real-world improvements with shared clients:
 - Memory: 66% reduction
 - Latency: 70% faster response times
 - Throughput: 275% more requests per second
@@ -82,13 +127,13 @@ Real-world improvements with static clients:
 
 ## Best Practices
 
-1. Create HTTP clients once and reuse them
-2. Configure timeouts and connection pools
+1. Create HTTP clients once and reuse them through application state
+2. Configure timeouts and connection pools appropriately
 3. Handle errors gracefully
 4. Consider graceful shutdown for connection cleanup
 5. Monitor client metrics in production
 
-By implementing a static HTTP client, you'll build more efficient, reliable Rust services that can handle higher loads with fewer resources.
+By using a properly shared HTTP client, you'll build more efficient, reliable Rust services that can handle higher loads with fewer resources.
 
 ## Common Implementation Mistakes
 
@@ -139,14 +184,15 @@ Not configuring connection pools can limit throughput:
 
 ```rust
 // ⚠️ SUBOPTIMAL: Default connection pool might be too small
-static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| Client::new());
+let client = Client::new();
+let state = AppState { client };
 ```
 
 Better:
 
 ```rust
 // ✅ GOOD: Configured connection pool
-static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
+let client = Client::builder()
     Client::builder()
         .pool_max_idle_per_host(10) // Keep up to 10 idle connections per host
         .pool_idle_timeout(Duration::from_secs(30)) // Keep idle connections for 30 seconds
@@ -203,12 +249,21 @@ async fn get_data(State(state): State<AppState>) -> impl IntoResponse {
 When your application terminates, you might want to gracefully close connections:
 
 ```rust
-// Register a shutdown handler
-ctrl_c::set_handler(move || {
-    // This ensures in-flight requests can complete
-    // but no new requests will be accepted
-    HTTP_CLIENT.close();
-})?;
+// When using Axum with graceful shutdown
+let shutdown = async {
+    tokio::signal::ctrl_c()
+        .await
+        .expect("Failed to install CTRL+C signal handler");
+};
+
+// Pass the client to your shutdown handler
+axum::serve(listener, app)
+    .with_graceful_shutdown(shutdown)
+    .await
+    .unwrap();
+    
+// Perform any additional cleanup here
+state.client.close();
 ```
 
 ### Circuit Breaking
@@ -216,28 +271,31 @@ ctrl_c::set_handler(move || {
 For robust systems, consider adding circuit breaking to your client:
 
 ```rust
-static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
-    let circuit_breaker = CircuitBreaker::new()
-        .with_failure_threshold(5)
-        .with_reset_timeout(Duration::from_secs(30));
-        
-    Client::builder()
-        .middleware(circuit_breaker)
-        .build()
-        .expect("Failed to build HTTP client")
-});
+// Create a circuit breaker
+let circuit_breaker = CircuitBreaker::new()
+    .with_failure_threshold(5)
+    .with_reset_timeout(Duration::from_secs(30));
+    
+// Add it to your client when building
+let client = Client::builder()
+    .middleware(circuit_breaker)
+    .build()
+    .expect("Failed to build HTTP client");
+    
+// Add to state
+let state = AppState { client };
 ```
 
 ## Key Takeaways
 
 1. **Create HTTP clients once** and reuse them throughout your application
-2. Use **`once_cell`** or **`lazy_static`** to create shared static clients
+2. Use **Axum's application state pattern** as the recommended approach to share clients
 3. **Configure your clients** with appropriate timeouts and connection pool settings
 4. **Monitor the performance impact** of your optimization
 5. Consider **graceful shutdown** and **circuit breaking** for production systems
 6. Remember that this simple change can dramatically **improve performance and reliability**
 
-By implementing a static HTTP client, you'll build more efficient, reliable Rust services that can handle higher loads with fewer resources. The performance gains are significant and directly impact user experience and operational costs.
+By properly sharing your HTTP client through application state, you'll build more efficient, reliable Rust services that can handle higher loads with fewer resources. The performance gains are significant and directly impact user experience and operational costs.
 
 ## Security Considerations
 
@@ -249,7 +307,7 @@ For production systems, you should configure TLS settings appropriately:
 use rustls::{ClientConfig, RootCertStore};
 use std::sync::Arc;
 
-static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
+// In your main function or app setup:
     // Load trusted root certificates
     let mut root_store = RootCertStore::empty();
     root_store.add_server_trust_anchors(
@@ -272,11 +330,13 @@ static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
         .with_no_client_auth();
     
     // Build the reqwest client with custom TLS config
-    Client::builder()
+    let client = Client::builder()
         .use_preconfigured_tls(tls_config)
         .build()
-        .expect("Failed to build TLS-configured client")
-});
+        .expect("Failed to build TLS-configured client");
+        
+    // Add to state
+    let state = AppState { client };
 ```
 
 ### Request Tracing and Security Headers
@@ -284,7 +344,7 @@ static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
 For proper security monitoring, consider adding tracing and security headers:
 
 ```rust
-static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
+// In your main function or app setup:
     Client::builder()
         // Add a custom middleware for tracing
         .middleware(TracingMiddleware::new())

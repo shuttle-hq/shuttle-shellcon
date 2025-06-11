@@ -14,9 +14,6 @@ pub async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoRespo
     // This causes memory and resource leaks
     let client = reqwest::Client::new();
     
-    // Set environment variable to track that we're NOT using the static client
-    std::env::set_var("USING_STATIC_CLIENT", "false");
-    
     // Log metrics about connection creation
     tracing::info!(
         request_id = %request_id,
@@ -27,19 +24,33 @@ pub async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoRespo
     // but creates a new client every time
 }
 
-// After optimization: Using a static HTTP client
-use once_cell::sync::Lazy;
-use reqwest::Client;
+// After optimization: Using Axum's AppState pattern
 
-// Define a single static HTTP client that is created only once
-static HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
-    Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .expect("Failed to build HTTP client")
-});
+// In main.rs where we build the application:
 
-pub async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoResponse {
+// First, define an AppState struct that includes the HTTP client
+pub struct AppState {
+    client: reqwest::Client,
+    // ... other state fields as needed
+}
+
+// Then, in your main function or app setup:
+let client = reqwest::Client::builder()
+    .timeout(std::time::Duration::from_secs(30))
+    .build()
+    .expect("Failed to build HTTP client");
+
+// Add the client to your app state
+let state = AppState { client };
+
+// Use the state when building your router
+let app = Router::new()
+    .route("/api/sensor-status", get(get_sensor_status))
+    // ... other routes
+    .with_state(state);
+
+// And in your handler function:
+pub async fn get_sensor_status(State(state): State<AppState>) -> impl IntoResponse {
     // Create a span for sensor status check with request ID for correlation
     let request_id = uuid::Uuid::new_v4().to_string();
     let span = tracing::info_span!(
@@ -48,26 +59,26 @@ pub async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoRespo
     );
     let _guard = span.enter();
 
-    // GOOD: Use the shared static client
+    // GOOD: Use the client from the app state
     // No new client is created here
-    let client = &*HTTP_CLIENT;
+    let client = &state.client;
     
     // Log metrics about using the shared client
     tracing::info!(
         request_id = %request_id,
-        "Using shared HTTP client for request"
+        "Using shared HTTP client from app state"
     );
     
     // Rest of the function remains the same
-    // but now uses the shared client
+    // but now uses the shared client from app state
 }
 ```
 
-This solution addresses the resource leak by creating a static HTTP client using the `once_cell` crate instead of creating a new client for every request. The key optimizations include:
+This solution addresses the resource leak by using Axum's application state pattern to share a single HTTP client across all requests. The key optimizations include:
 
-1. Creating a static HTTP client with `once_cell::sync::Lazy` that is initialized only once
-2. Reusing this shared client across all requests instead of creating a new one each time
-3. Setting appropriate timeouts and configuration on the shared client
-4. Tracking client usage with environment variables for validation purposes
+1. Creating the HTTP client once during application startup
+2. Storing the client in the application state (AppState struct)
+3. Accessing the client through the state in request handlers
+4. Setting appropriate timeouts and configuration on the shared client
 
 HTTP clients are resource-intensive objects that maintain connection pools, TLS configurations, and DNS caches. Creating a new one for each request wastes these resources and can cause memory leaks and performance degradation in high-traffic services. By using a static client, we ensure that these resources are properly managed and reused.

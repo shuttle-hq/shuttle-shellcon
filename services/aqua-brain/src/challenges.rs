@@ -37,9 +37,10 @@ pub async fn test_challenge_1() -> impl IntoResponse {
     Json(response)
 }
 
-// ⚠️ CHALLENGE #3: MEMORY OPTIMIZATION ⚠️
+// ⚠️ CHALLENGE #3: STRING ALLOCATION OPTIMIZATION ⚠️
 // This function creates new String objects for every analysis result
-// Your task: Optimize memory usage by replacing dynamic String allocations with static &str references
+// Your task: Optimize memory usage by reducing unnecessary String allocations
+// Hint: Consider using static &str references, Cow<'a, str>, or string interning
 pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
     // Get tank_id or default to Tank-A1
     let tank_id = params.tank_id.clone().unwrap_or_else(|| "Tank-A1".to_string());

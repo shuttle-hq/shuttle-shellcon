@@ -259,12 +259,12 @@ async fn get_current_challenge() -> impl IntoResponse {
         Challenge {
             id: 3,
             name: "memory-optimization".to_string(),
-            title: "The Memory Hog".to_string(),
+            title: "String Allocation Optimization".to_string(),
             description: "The analysis engine is using excessive memory, particularly when calculating status reports for multiple tanks. The issue seems to be with how strings are handled.".to_string(),
-            hint: "Examine how strings are created and returned in the tank analysis functions. Reduce memory usage by either: 1) using static string references (&'static str) for fixed values, or 2) implementing string interning with the internment crate to deduplicate repeated strings.".to_string(),
+            hint: "Examine how strings are created and returned in the analysis function. Reduce memory usage by: 1) using static string references (&'static str) for fixed values, 2) implementing Cow<'a, str> for flexible ownership, or 3) using string interning with the internment crate to deduplicate repeated strings.".to_string(),
             service: "aqua-brain".to_string(),
             file: "src/challenges.rs".to_string(),
-            function: "analyze_tank_conditions".to_string(),
+            function: "get_analysis_result".to_string(),
             status: "degraded".to_string(),
             validation_endpoint: EndpointInfo {
                 service: "aqua-brain".to_string(),
@@ -445,11 +445,11 @@ async fn get_tank_analysis_by_id(
     Json(result)
 }
 
-/// Validates the implementation of Challenge #3: Memory Optimization
+/// Validates the implementation of Challenge #3: String Allocation Optimization
 async fn validate_memory_optimization(
     State(_state): State<AppState>,
 ) -> impl IntoResponse {
-    tracing::info!("Starting validation for Challenge #3: Memory Optimization");
+    tracing::info!("Starting validation for Challenge #3: String Allocation Optimization");
     
     use serde_json::json;
     use std::fs;
@@ -485,7 +485,7 @@ async fn validate_memory_optimization(
     };
     
     // Find the challenge section boundaries
-    let challenge_start = source_code.find("// ⚠️ CHALLENGE #3: MEMORY OPTIMIZATION ⚠️");
+    let challenge_start = source_code.find("// ⚠️ CHALLENGE #3: STRING ALLOCATION OPTIMIZATION ⚠️");
     let challenge_end = source_code.find("// ⚠️ END CHALLENGE CODE ⚠️");
     
     // Check if we found the challenge section boundaries
@@ -521,8 +521,9 @@ async fn validate_memory_optimization(
         .filter(|line| line.contains(".to_string()"))
         .count();
     
-    // Check for the use of optimized string handling (either &str or internment)
+    // Check for the use of optimized string handling (either &str, Cow, or internment)
     let uses_str_type = is_uncommented("&str") || is_uncommented("&'static str");
+    let uses_cow = is_uncommented("Cow::") || is_uncommented("std::borrow::Cow");
     let uses_interning = is_uncommented("Intern::") || is_uncommented("internment::");
     
     // Log what we're finding in the challenge code
@@ -530,18 +531,19 @@ async fn validate_memory_optimization(
         request_id = %request_id,
         to_string_count = to_string_count,
         uses_str_type = uses_str_type,
+        uses_cow = uses_cow,
         uses_interning = uses_interning,
         "Challenge code check results"
     );
     
     // The challenge is completed if the number of .to_string() calls is significantly reduced
-    // and either &str or interning is used
-    let is_valid = to_string_count < 10 && (uses_str_type || uses_interning);
+    // and either &str, Cow, or interning is used
+    let is_valid = to_string_count < 10 && (uses_str_type || uses_cow || uses_interning);
     
     tracing::info!(
         request_id = %request_id,
         solution_valid = is_valid,
-        "Challenge #3 validation completed"
+        "Challenge #3: String Allocation Optimization validation completed"
     );
     
     // Build a standardized response following the same format as other challenges
@@ -550,7 +552,7 @@ async fn validate_memory_optimization(
         "message": if is_valid {
             "Solution correctly implemented! Memory usage is now optimized."
         } else {
-            "Solution validation failed. Please optimize memory usage by using either static string references or string interning instead of creating new String objects."
+            "Solution validation failed. Please optimize memory usage by using static string references, Cow<'a, str>, or string interning instead of creating new String objects."
         },
         "system_component": {
             "name": "Analysis Engine",
