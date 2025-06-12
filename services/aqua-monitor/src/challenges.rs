@@ -106,16 +106,16 @@ pub async fn get_tank_readings(
     // The aquarium monitoring system needs to read tank configuration settings frequently.
     // Your task: Implement asynchronous file I/O to improve performance.
 
+    let io_start = std::time::Instant::now();
+
     // Create a span specifically for file I/O operations
     let io_span = tracing::info_span!("file_io_operation");
     let _io_guard = io_span.enter();
 
-    // Blocking implementation
-    let io_start = std::time::Instant::now();
-
     // Blocking implementation - this blocks the thread
     let config = std::fs::read_to_string("./config/tank_settings.json")
         .unwrap_or_else(|_| "{}".to_string());
+
     // Simulate additional I/O latency in the blocking implementation
     std::thread::sleep(std::time::Duration::from_millis(100));
 

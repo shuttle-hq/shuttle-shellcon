@@ -258,40 +258,47 @@ async fn validate_challenge_solution(
     // Check for absence of blocking operations
     let no_blocking_operations = !is_uncommented("std::thread::sleep") && 
                                !is_uncommented("std::fs::read");
+
+    // Check for proper tracing implementation - be flexible about the exact approach
+    let has_proper_tracing = (is_uncommented("tracing::info_span") || is_uncommented("info_span!")) &&
+                            (is_uncommented(".in_scope") || is_uncommented(".instrument"));
     
     // Log the key findings
     tracing::info!(
         request_id = %request_id,
         uses_async_io = uses_async_io,
         no_blocking_operations = no_blocking_operations,
+        has_proper_tracing = has_proper_tracing,
         "Challenge validation check results"
     );
     
-    // Log what we're finding in the challenge code
-    tracing::info!(
-        request_id = %request_id,
-        uses_async_io = uses_async_io,
-        no_blocking_operations = no_blocking_operations,
-        "Challenge code check results"
-    );
-    
-    // Both checks must pass for validation to succeed
-    let is_valid = uses_async_io && no_blocking_operations;
+    // All checks must pass for validation to succeed
+    let is_valid = uses_async_io && no_blocking_operations && has_proper_tracing;
 
     // Create the response with appropriate feedback
     let response = json!({
         "valid": is_valid,
         "message": if is_valid {
-            "Solution correctly implemented! Async I/O is now being used for file operations."
+            "Solution correctly implemented! Async I/O is now being used with proper tracing."
         } else {
-            "Solution validation failed. Make sure you're using tokio::fs for file operations instead of std::fs, and remove any thread::sleep calls."
+            let mut issues = Vec::new();
+            if !uses_async_io {
+                issues.push("Make sure you're using async file operations (e.g., tokio::fs)");
+            }
+            if !no_blocking_operations {
+                issues.push("Remove any blocking operations (std::fs, thread::sleep)");
+            }
+            if !has_proper_tracing {
+                issues.push("Ensure proper tracing implementation for async operations");
+            }
+            format!("Solution validation failed. Issues to address: {}", issues.join(", "))
         },
         "system_component": {
             "name": "Tank Readings API",
             "description": if is_valid {
-                "Tank readings API is now using async I/O operations"
+                "Tank readings API is now using async I/O operations with proper tracing"
             } else {
-                "Tank readings API is experiencing high latency due to blocking I/O"
+                "Tank readings API is experiencing high latency due to blocking I/O or improper tracing"
             },
             "status": if is_valid { "normal" } else { "degraded" }
         }
