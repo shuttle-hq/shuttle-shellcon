@@ -11,9 +11,14 @@ CREATE TABLE IF NOT EXISTS species (
     diet_type VARCHAR(50) NOT NULL
 );
 
--- Index will be added as part of challenge 2
--- CREATE INDEX IF NOT EXISTS idx_species_name ON species(name);
--- CREATE INDEX IF NOT EXISTS idx_species_scientific_name ON species(scientific_name);
+-- Challenge 2: Database Optimization
+-- For efficient text search with wildcards (LIKE/ILIKE with % patterns), consider:
+-- 1. Enabling PostgreSQL extensions that support text search optimization
+-- 2. Creating appropriate indexes for text columns (name, scientific_name)
+-- 3. Using case-insensitive operators in your queries
+--
+-- Regular B-tree indexes don't help with '%term%' patterns (only with 'term%')
+-- Research which PostgreSQL extension and index type would help with '%term%' patterns
 
 -- Insert sample data
 INSERT INTO species (name, scientific_name, description, min_temperature, max_temperature, min_ph, max_ph, diet_type)

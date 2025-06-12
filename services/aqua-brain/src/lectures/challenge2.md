@@ -61,16 +61,14 @@ let species = sqlx::query_as::<_, Species>(
 
 ```rust
 // Step 1: First, ensure you've set up the trigram extension and index
-// This is typically done during database initialization
-sqlx::query("CREATE EXTENSION IF NOT EXISTS pg_trgm;")
-    .execute(&pool)
-    .await?;
-    
-sqlx::query("CREATE INDEX IF NOT EXISTS species_name_trigram_idx ON species USING GIN (name gin_trgm_ops);")
-    .execute(&pool)
-    .await?;
+// This is typically done in your migration files (e.g., 20250510000000_create_species.sql)
+// You should NOT create these in your Rust code at runtime
 
-// Step 2: Use ILIKE with your indexed column
+// In your migration file:
+// CREATE EXTENSION IF NOT EXISTS pg_trgm;
+// CREATE INDEX IF NOT EXISTS species_name_trigram_idx ON species USING GIN (name gin_trgm_ops);
+
+// Step 2: Use ILIKE with your indexed column in your Rust code
 let species = sqlx::query_as::<_, Species>(
     "SELECT * FROM species WHERE name ILIKE $1"
 )
