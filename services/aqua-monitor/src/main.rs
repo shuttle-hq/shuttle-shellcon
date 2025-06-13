@@ -11,7 +11,6 @@ use shuttle_axum::axum::{
 };
 use sqlx::{PgPool, Row};
 use std::fs;
-use tracing;
 use thiserror::Error;
 
 // Custom Error Type for aqua-monitor service
@@ -384,8 +383,11 @@ async fn validate_resource_leak_solution(
     let challenge_code = &source_code[challenge_start.unwrap()..challenge_end.unwrap() + "// ⚠️ END CHALLENGE CODE ⚠️".len()];
     
     // Check for module-level static HTTP client definition (outside challenge section)
+    // or client in app state (also a valid approach)
     let has_static_client = source_code.contains("static HTTP_CLIENT") || 
-                            source_code.contains("static CLIENT");
+                            source_code.contains("static CLIENT") ||
+                            source_code.contains("client: reqwest::Client") ||
+                            source_code.contains("http_client: reqwest::Client");
     
     // Simple function to check if a pattern exists in uncommented code
     let is_uncommented = |pattern: &str| -> bool {
@@ -395,14 +397,22 @@ async fn validate_resource_leak_solution(
     };
     
     // Check for use of static client instead of creating new client
+    // Allow more flexible usage patterns including direct CLIENT usage and &CLIENT (deref coercion)
     let uses_static_client = is_uncommented("&*HTTP_CLIENT") || 
                              is_uncommented("HTTP_CLIENT.") ||
                              is_uncommented("&*CLIENT") ||
-                             is_uncommented("CLIENT.");
+                             is_uncommented("&CLIENT") ||
+                             is_uncommented("CLIENT.") ||
+                             is_uncommented("CLIENT") ||
+                             is_uncommented("state.client") ||
+                             is_uncommented("state.http_client");
     
     // No new client if either there's no Client::new() call at all, or it's only used with Lazy::new
+    // or if it's only used once for initialization in the app state
     let no_new_client = !is_uncommented("Client::new()") || 
-                        challenge_code.contains("Lazy::new");
+                        challenge_code.contains("Lazy::new") ||
+                        (source_code.contains("client: reqwest::Client") && 
+                         source_code.matches("Client::new()").count() <= 1);
     
     // Log what we're finding in the challenge code
     tracing::info!(
@@ -422,7 +432,7 @@ async fn validate_resource_leak_solution(
         "message": if is_valid {
             "Solution correctly implemented! HTTP client is now shared and resource-efficient."
         } else {
-            "Solution validation failed. Please implement a shared, static HTTP client instead of creating a new one for each request."
+            "Solution validation failed. Please implement a shared HTTP client using one of these approaches: 1) a static CLIENT with once_cell/lazy_static, 2) storing the client in AppState, or 3) another approach that avoids creating a new client for each request."
         },
         "system_component": {
             "name": "Sensor Status API",

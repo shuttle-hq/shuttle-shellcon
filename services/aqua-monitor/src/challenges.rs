@@ -4,9 +4,7 @@ use shuttle_axum::axum::{
     response::IntoResponse,
     Json,
 };
-use std::time::Duration;
-use tracing;
-
+use tokio::time::Duration;
 use crate::{AppState, ApiError, TankSettingsSummary, TankReading};
 
 /// Retrieves the current status of all tank sensors.
@@ -28,7 +26,10 @@ pub async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoRespo
 
     // ⚠️ CHALLENGE #4: RESOURCE LEAK ⚠️
     // Problem: Creating a new HTTP client for each request wastes resources
-    // Solution: Use a shared static client that's created only once
+    // Solution: Use a shared HTTP client using one of these approaches:
+    //   1. Store the client in AppState (recommended for Axum apps)
+    //   2. Use a static client with once_cell/lazy_static
+    //   3. Or another approach that avoids creating a new client per request
     
     // PROBLEM: Creating a new client for each request (resource leak)
     let client = reqwest::Client::new();

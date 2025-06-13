@@ -1,3 +1,7 @@
+# Challenge 4 Solution: Resource Leak Prevention
+
+## Problem: Creating a new HTTP client for every request
+
 ```rust
 // Before: Creating a new client for every request
 // This causes resource leaks and excessive memory usage
@@ -23,9 +27,13 @@ pub async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoRespo
     // Rest of the function remains the same
     // but creates a new client every time
 }
+```
 
-// After optimization: Using Axum's AppState pattern
+## Solution 1: Using Axum's Application State Pattern (Recommended)
 
+This is the most idiomatic approach for Axum applications, providing clear dependency injection and making testing easier.
+
+```rust
 // In main.rs where we build the application:
 
 // First, define an AppState struct that includes the HTTP client
@@ -74,11 +82,90 @@ pub async fn get_sensor_status(State(state): State<AppState>) -> impl IntoRespon
 }
 ```
 
-This solution addresses the resource leak by using Axum's application state pattern to share a single HTTP client across all requests. The key optimizations include:
+## Solution 2: Using Static HTTP Client with once_cell or LazyLock
+
+This approach is useful when you need a global client accessible from multiple contexts.
+
+```rust
+// At the top of your file, outside any functions
+use once_cell::sync::Lazy;
+use reqwest::Client;
+
+// Define a static HTTP client that's initialized once
+static CLIENT: Lazy<Client> = Lazy::new(|| {
+    Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .expect("Failed to build HTTP client")
+});
+
+// In your handler function
+pub async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoResponse {
+    // Create a span for sensor status check with request ID for correlation
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let span = tracing::info_span!(
+        "tank_sensor_status_check",
+        request_id = %request_id
+    );
+    let _guard = span.enter();
+
+    // GOOD: Use the static client with idiomatic deref coercion
+    let client = &CLIENT;
+    // Alternatively: let client = &*CLIENT; // Explicit dereferencing also works
+    
+    // Log metrics about using the shared client
+    tracing::info!(
+        request_id = %request_id,
+        "Using shared static HTTP client"
+    );
+    
+    // Rest of the function remains the same
+    // but now uses the shared static client
+}
+```
+
+## Solution 3: Combined Approach (Static Client in App State)
+
+This approach combines the benefits of both patterns.
+
+```rust
+// At the top of your file, outside any functions
+use once_cell::sync::Lazy;
+use reqwest::Client;
+
+// Define a static HTTP client that's initialized once
+static CLIENT: Lazy<Client> = Lazy::new(|| {
+    Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .expect("Failed to build HTTP client")
+});
+
+// In your AppState struct
+pub struct AppState {
+    client: &'static Client,
+    // ... other state fields as needed
+}
+
+// In your main function
+let state = AppState { client: &CLIENT };
+
+// In your handler function
+pub async fn get_sensor_status(State(state): State<AppState>) -> impl IntoResponse {
+    // Use the client from state (which is a reference to the static client)
+    let client = state.client;
+    
+    // Rest of the function remains the same
+}
+```
+
+## Key Benefits of All Solutions
+
+All of these solutions address the resource leak by ensuring a single HTTP client is shared across all requests. The key optimizations include:
 
 1. Creating the HTTP client once during application startup
-2. Storing the client in the application state (AppState struct)
-3. Accessing the client through the state in request handlers
-4. Setting appropriate timeouts and configuration on the shared client
+2. Reusing the same client for all requests
+3. Properly configuring timeouts and connection pools
+4. Avoiding the overhead of creating new connections for each request
 
-HTTP clients are resource-intensive objects that maintain connection pools, TLS configurations, and DNS caches. Creating a new one for each request wastes these resources and can cause memory leaks and performance degradation in high-traffic services. By using a static client, we ensure that these resources are properly managed and reused.
+HTTP clients are resource-intensive objects that maintain connection pools, TLS configurations, and DNS caches. Creating a new one for each request wastes these resources and can cause memory leaks and performance degradation in high-traffic services. By using a shared client, we ensure that these resources are properly managed and reused.
