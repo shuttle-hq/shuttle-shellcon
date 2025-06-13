@@ -279,7 +279,7 @@ async fn validate_challenge_solution(
     let response = json!({
         "valid": is_valid,
         "message": if is_valid {
-            "Solution correctly implemented! Async I/O is now being used with proper tracing."
+            "Solution correctly implemented! Async I/O is now being used with proper tracing.".to_string()
         } else {
             let mut issues = Vec::new();
             if !uses_async_io {
