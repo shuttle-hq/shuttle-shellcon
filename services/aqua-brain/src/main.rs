@@ -261,7 +261,7 @@ async fn get_current_challenge() -> impl IntoResponse {
             name: "memory-optimization".to_string(),
             title: "String Allocation Optimization".to_string(),
             description: "The analysis engine is using excessive memory, particularly when calculating status reports for multiple tanks. The issue seems to be with how strings are handled.".to_string(),
-            hint: "Examine how strings are created and returned in the analysis function. Reduce memory usage by: 1) using static string references (&'static str) for fixed values, 2) implementing Cow<'a, str> for flexible ownership, or 3) using string interning with the internment crate to deduplicate repeated strings.".to_string(),
+            hint: "Examine how strings are created and returned in the analysis function. Reduce memory usage by: 1) using enums for fixed sets of values like status codes, 2) using static string references (&'static str) for fixed string values, 3) implementing Cow<'a, str> for flexible ownership, or 4) redesigning the API to combine these approaches for maximum efficiency.".to_string(),
             service: "aqua-brain".to_string(),
             file: "src/challenges.rs".to_string(),
             function: "get_analysis_result".to_string(),
@@ -521,10 +521,13 @@ async fn validate_memory_optimization(
         .filter(|line| line.contains(".to_string()"))
         .count();
     
-    // Check for the use of optimized string handling (either &str, Cow, or internment)
+    // Check for the use of optimized string handling techniques
     let uses_str_type = is_uncommented("&str") || is_uncommented("&'static str");
     let uses_cow = is_uncommented("Cow::") || is_uncommented("std::borrow::Cow");
     let uses_interning = is_uncommented("Intern::") || is_uncommented("internment::");
+    let uses_enums = is_uncommented("enum ") && 
+                    (is_uncommented("::Warning") || is_uncommented("::Normal") || 
+                     is_uncommented("::Critical") || is_uncommented("::Unknown"));
     
     // Log what we're finding in the challenge code
     tracing::info!(
@@ -533,12 +536,13 @@ async fn validate_memory_optimization(
         uses_str_type = uses_str_type,
         uses_cow = uses_cow,
         uses_interning = uses_interning,
+        uses_enums = uses_enums,
         "Challenge code check results"
     );
     
     // The challenge is completed if the number of .to_string() calls is significantly reduced
-    // and either &str, Cow, or interning is used
-    let is_valid = to_string_count < 10 && (uses_str_type || uses_cow || uses_interning);
+    // and at least one optimization technique is used
+    let is_valid = to_string_count < 10 && (uses_str_type || uses_cow || uses_interning || uses_enums);
     
     tracing::info!(
         request_id = %request_id,
@@ -552,7 +556,7 @@ async fn validate_memory_optimization(
         "message": if is_valid {
             "Solution correctly implemented! Memory usage is now optimized."
         } else {
-            "Solution validation failed. Please optimize memory usage by using static string references, Cow<'a, str>, or string interning instead of creating new String objects."
+            "Solution validation failed. Please optimize memory usage by using enums for fixed values, static string references, Cow<'a, str>, or a combination of these approaches instead of creating new String objects."
         },
         "system_component": {
             "name": "Analysis Engine",
