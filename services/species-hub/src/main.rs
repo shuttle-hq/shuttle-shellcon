@@ -12,7 +12,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::{PgPool, Row};
 use std::fs;
-use tracing;
 use thiserror::Error;
 
 // Custom Error Type for species-hub service

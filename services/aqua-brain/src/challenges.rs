@@ -3,7 +3,6 @@ use shuttle_axum::axum::{
     response::IntoResponse,
     Json,
 };
-use tracing;
 
 use crate::AnalysisParams;
 use crate::AnalysisResult;
@@ -50,10 +49,11 @@ pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
     let oxygen_status = "normal".to_string();
     let feeding_status = "overdue".to_string();
     let overall_health = "at_risk".to_string();
-    let mut recommendations: Vec<String> = Vec::new();
-    recommendations.push("Reduce temperature by 2°C".to_string());
-    recommendations.push("Adjust pH to 7.2-7.5 range".to_string());
-    recommendations.push("Administer emergency feeding".to_string());
+    let recommendations: Vec<String> = vec![
+        "Reduce temperature by 2°C".to_string(),
+        "Adjust pH to 7.2-7.5 range".to_string(),
+        "Administer emergency feeding".to_string(),
+    ];
 
     // Generate analysis result based on tank ID
     match tank_id.as_str() {

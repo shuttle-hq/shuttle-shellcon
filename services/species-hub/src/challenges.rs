@@ -4,7 +4,6 @@ use shuttle_axum::axum::{
     Json,
 };
 use sqlx::{postgres::PgRow, Row};
-use tracing;
 
 use crate::{
     ApiError, AppState, FeedingSchedule, FeedingScheduleParams, 

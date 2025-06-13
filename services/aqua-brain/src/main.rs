@@ -7,7 +7,6 @@ use shuttle_axum::axum::Router;
 // CORS removed - managed by frontend
 use serde::{Deserialize, Serialize};
 // No unused imports
-use tracing;
 use thiserror::Error;
 use std::fs;
 
