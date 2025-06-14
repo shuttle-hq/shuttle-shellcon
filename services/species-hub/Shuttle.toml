@@ -1,5 +1,5 @@
 [shuttle_shared_db.postgres]
-local_uri = "postgres://postgres:postgres@localhost:5432/species_hub"
+# local_uri = "postgres://postgres:postgres@localhost:5432/species_hub"
 
 [deploy]
 include = ["src/*"]
