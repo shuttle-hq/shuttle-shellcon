@@ -56,13 +56,8 @@ pub async fn get_tank_readings(
     // Parse summarized tank settings
     let settings: TankSettingsSummary = serde_json::from_str(&config).unwrap_or_default();
 
-    let io_duration = io_start.elapsed().as_millis();
-    tracing::info!(
-        request_id = %request_id,
-        tank_id = %tank_id,
-        io_duration_ms = io_duration,
-        "Tank configuration file I/O completed"
-    );
+    // The duration of the I/O operation is automatically captured by the `io_span` 
+    // when using `.instrument()`. Manual duration logging here is not necessary.
     
     // ... rest of function omitted for brevity ...
 }
@@ -70,26 +65,25 @@ pub async fn get_tank_readings(
 
 This solution addresses both the performance bottleneck and proper tracing in async contexts. Here are the key improvements:
 
-1. **Async File I/O**:
-   - Replaced blocking `std::fs::read_to_string` with async `tokio::fs::read_to_string`
-   - Added `.await` to properly handle the async operation
-   - Removed unnecessary blocking sleep
+1.  **Async File I/O**:
+    *   Replaced blocking `std::fs::read_to_string` with the asynchronous `tokio::fs::read_to_string`.
+    *   Used `.await` to pause execution until the file reading completes, without blocking the thread.
+    *   Removed the blocking `std::thread::sleep`, as asynchronous operations don't require artificial delays for yielding.
 
-2. **Proper Async Tracing**:
-   - Changed from using `.enter()` to `.in_scope()` with async block
-   - This ensures the span correctly tracks the entire async operation
-   - Spans now properly measure the actual I/O duration
+2.  **Idiomatic Async Tracing with `.instrument()`**:
+    *   The `io_span` is associated with the `tokio::fs::read_to_string(...).await` future using the `.instrument()` method from the `tracing-futures` crate.
+    *   This is the recommended way to trace asynchronous operations in Rust.
+    *   The `tracing_futures::Instrument` trait needs to be imported (`use tracing_futures::Instrument;`).
 
-3. **Why the Tracing Changes Matter**:
-   - In async code, using `.enter()` can lead to incorrect span timing
-   - When a task yields to the runtime, the span might cover operations from other tasks
-   - Using `.in_scope()` with async blocks ensures the span only covers our specific operation
-   - This gives more accurate metrics and better observability
+3.  **Why `.instrument()` is Preferred for Async Tracing**:
+    *   **Precision**: `.instrument(span)` ensures the `span` is entered *every time* the instrumented future is polled and exited when the poll returns. This precisely ties the span's lifecycle to the future's actual execution.
+    *   **Correctness**: Simpler approaches like `span.enter()` before an `.await` or `span.in_scope(|| async { ... })` can be imprecise. The span might not be active during all polls of the future, or it might incorrectly cover other interleaved futures if the task yields.
+    *   **Clarity**: It clearly denotes that the span is specifically for the instrumented future.
+    *   The manual `io_duration` calculation and logging is no longer needed, as the instrumented span will automatically capture the duration of the I/O operation.
 
-4. **Performance Benefits**:
-   - The thread is no longer blocked during file I/O
-   - Other tasks can run while waiting for file operations
-   - More accurate performance metrics due to proper span usage
-   - Better system throughput under load
+4.  **Performance and Observability Benefits**:
+    *   The application thread is not blocked during file I/O, allowing it to handle other requests or tasks.
+    *   System throughput under load is improved.
+    *   Accurate performance metrics and better observability are achieved due to the precise tracing of asynchronous operations with `.instrument()`.
 
-Remember: When converting sync code to async, it's not just about changing the I/O operations - you also need to adapt your tracing to handle async contexts correctly. This ensures your monitoring and metrics remain accurate in the async world.
+Remember: When converting synchronous code to asynchronous, it's crucial to adapt your tracing strategy. Using `.instrument()` for futures ensures your monitoring and metrics remain accurate and meaningful in an async Rust environment.
