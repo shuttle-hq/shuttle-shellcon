@@ -133,6 +133,7 @@ pub async fn get_species(
                 ApiError::Database(e)
             })?
     };
+    // ⚠️ END CHALLENGE CODE ⚠️
     
     // Get query duration
     let elapsed = start.elapsed().as_millis();
