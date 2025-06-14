@@ -105,7 +105,12 @@ pub async fn get_tank_readings(
 
     // ⚠️ CHALLENGE #1: ASYNC I/O ⚠️
     // The aquarium monitoring system needs to read tank configuration settings frequently.
-    // Your task: Implement asynchronous file I/O to improve performance.
+    // Your task:
+    // 1. Implement asynchronous file I/O using `tokio::fs` to improve performance.
+    // 2. Ensure your tracing span for the file I/O operation accurately covers
+    //    the entire asynchronous task. You'll need to research the idiomatic
+    //    way to associate a tracing span with a Future in Rust to ensure
+    //    the span's context is active whenever the Future is being processed.
 
     let io_start = std::time::Instant::now();
 
