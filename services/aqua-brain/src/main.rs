@@ -243,10 +243,10 @@ async fn get_current_challenge() -> impl IntoResponse {
             name: "database-optimization".to_string(),
             title: "The Slow Query".to_string(),
             description: "The species search functionality is extremely slow when users search for partial names. Database queries are taking too long, especially for text searches.".to_string(),
-            hint: "The issue is with how text search is being performed in the database. Look at how case-sensitivity is handled in the SQL queries and check the migration file (20250510000000_create_species.sql). You'll need to enable a PostgreSQL extension for text search optimization and create appropriate indexes for the text columns. PostgreSQL offers operators for more efficient case-insensitive pattern matching that would improve search performance.".to_string(),
+            hint: "The species search functionality is underperforming, especially for partial name searches. The current database query for text searching isn't optimized. Investigate how PostgreSQL handles text searches and case-sensitivity. You'll likely need to explore PostgreSQL extensions that can accelerate text searching and then apply appropriate indexing strategies to the relevant columns in the `species` table. Also, review your SQL queries to ensure they can leverage these optimizations.".to_string(),
             service: "species-hub".to_string(),
             file: "src/challenges.rs".to_string(),
-            function: "search_species".to_string(),
+            function: "get_species".to_string(),
             status: "degraded".to_string(),
             validation_endpoint: EndpointInfo {
                 service: "species-hub".to_string(),

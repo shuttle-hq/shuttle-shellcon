@@ -230,46 +230,74 @@ async fn health_check() -> impl IntoResponse {
 
 /// Validates the implementation of Challenge #2: Query Optimization
 async fn validate_query_optimization(
-    State(_state): State<AppState>,
+    State(state): State<AppState>, // Changed to use state for db access
 ) -> impl IntoResponse {
     tracing::info!("Starting validation for Challenge #2: Query Optimization");
     
     // Create a request ID for correlation in logs
     let request_id = uuid::Uuid::new_v4().to_string();
     
-    // For this challenge, we simply check if the implementation uses ILIKE queries
+    // --- Database Checks --- 
+    let pg_trgm_enabled: Result<bool, _> = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm')"
+    )
+    .fetch_one(&state.pool)
+    .await;
+
+    let name_index_exists: Result<bool, _> = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE tablename = 'species' AND indexname = 'species_name_gin_trgm_idx' AND indexdef ILIKE '%USING GIN (name gin_trgm_ops)%')"
+    )
+    .fetch_one(&state.pool)
+    .await;
+
+    let scientific_name_index_exists: Result<bool, _> = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE tablename = 'species' AND indexname = 'species_scientific_name_gin_trgm_idx' AND indexdef ILIKE '%USING GIN (scientific_name gin_trgm_ops)%')"
+    )
+    .fetch_one(&state.pool)
+    .await;
+
+    // Handle potential database query errors for checks
+    if pg_trgm_enabled.is_err() || name_index_exists.is_err() || scientific_name_index_exists.is_err() {
+        tracing::error!(
+            request_id = %request_id,
+            pg_trgm_error = ?pg_trgm_enabled.err(),
+            name_index_error = ?name_index_exists.err(),
+            scientific_name_index_error = ?scientific_name_index_exists.err(),
+            "Database error during validation checks for Challenge #2"
+        );
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({
+            "valid": false,
+            "message": "Validation failed: Could not perform database checks for pg_trgm extension or indexes.",
+            "system_component": {
+                "name": "Species Database",
+                "description": "Species database search is experiencing slowdowns",
+                "status": "degraded"
+            }
+        })));
+    }
+
+    let pg_trgm_ok = pg_trgm_enabled.unwrap_or(false);
+    let name_index_ok = name_index_exists.unwrap_or(false);
+    let scientific_name_index_ok = scientific_name_index_exists.unwrap_or(false);
+    let db_setup_ok = pg_trgm_ok && name_index_ok && scientific_name_index_ok;
+
+    // --- Source Code Checks (ILIKE usage) ---
     let current_dir = std::env::current_dir()
         .unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let source_path = current_dir.join("src/challenges.rs");
     
-    // Log the current directory for debugging
-    tracing::info!(
-        request_id = %request_id,
-        current_dir = %current_dir.display(),
-        "Current working directory for validation"
-    );
-    
-    let source_path = current_dir.join("src/challenges.rs"); // Updated to look at challenges.rs
-    
-    // Log the full source path for debugging
-    tracing::info!(
-        request_id = %request_id,
-        source_path = %source_path.display(),
-        "Full source path for validation"
-    );
-    
-    // Read the source code file
     let source_code = match fs::read_to_string(&source_path) {
         Ok(content) => content,
         Err(e) => {
             tracing::error!(
                 request_id = %request_id,
                 error = %e,
-                "Failed to read source code for validation"
+                path = %source_path.display(),
+                "Failed to read source code for validation (src/challenges.rs)"
             );
-            // If we can't read the source, assume the challenge is not completed
             return (StatusCode::OK, Json(json!({
                 "valid": false,
-                "message": "Validation failed: Unable to verify implementation.",
+                "message": "Validation failed: Unable to read src/challenges.rs to verify ILIKE usage.",
                 "system_component": {
                     "name": "Species Database",
                     "description": "Species database search is experiencing slowdowns",
@@ -278,76 +306,89 @@ async fn validate_query_optimization(
             })));
         }
     };
-    
-    // Extract just the challenge code section using the challenge markers
+
     let challenge_start = source_code.find("// ⚠️ CHALLENGE #2: DATABASE QUERY OPTIMIZATION ⚠️");
-    let challenge_end = source_code.find("// ⚠️ END CHALLENGE CODE ⚠️");
-    
-    // Check if we found the challenge section boundaries
-    if challenge_start.is_none() || challenge_end.is_none() {
-        tracing::error!(
+    let challenge_end = source_code.find("// ⚠️ END CHALLENGE CODE ⚠️"); // Assuming this marker exists or is added
+
+    let ilike_checks_possible = challenge_start.is_some() && challenge_end.is_some();
+    let (name_uses_ilike, scientific_name_uses_ilike, still_using_like) = if ilike_checks_possible {
+        let challenge_code = &source_code[challenge_start.unwrap()..challenge_end.unwrap()];
+        let is_uncommented = |pattern: &str| -> bool {
+            challenge_code.lines()
+                .filter(|line| !line.trim().starts_with("//"))
+                .any(|line| line.contains(pattern))
+        };
+        (
+            is_uncommented("WHERE name ILIKE $1"),
+            is_uncommented("WHERE scientific_name ILIKE $1"),
+            is_uncommented("WHERE name LIKE $1") || is_uncommented("WHERE scientific_name LIKE $1")
+        )
+    } else {
+        tracing::warn!(
             request_id = %request_id,
-            "Could not find challenge section boundaries in source code"
+            "Could not find challenge markers in src/challenges.rs for ILIKE checks. Skipping ILIKE validation."
         );
-        return (StatusCode::OK, Json(json!({
-            "valid": false,
-            "message": "Validation failed: Unable to verify implementation.",
-            "system_component": {
-                "name": "Species Database",
-                "description": "Species database search is experiencing slowdowns",
-                "status": "degraded"
-            }
-        })));
-    }
-    
-    // Extract just the challenge code section
-    let challenge_code = &source_code[challenge_start.unwrap()..challenge_end.unwrap() + "// ⚠️ END CHALLENGE CODE ⚠️".len()];
-    
-    // Simple function to check if a pattern exists in uncommented code
-    let is_uncommented = |pattern: &str| -> bool {
-        challenge_code.lines()
-            .filter(|line| !line.trim().starts_with("//"))
-            .any(|line| line.contains(pattern))
+        (false, false, true) // Default to failing ILIKE checks if markers are missing
     };
-    
-    // Check for correct ILIKE usage and any remaining LIKE usage
-    let name_uses_ilike = is_uncommented("WHERE name ILIKE $1");
-    let scientific_name_uses_ilike = is_uncommented("WHERE scientific_name ILIKE $1");
-    let still_using_like = is_uncommented("WHERE name LIKE $1") || 
-                          is_uncommented("WHERE scientific_name LIKE $1");
-    
-    // Log key validation findings
+
+    let ilike_ok = name_uses_ilike && scientific_name_uses_ilike && !still_using_like;
+
+    // --- Final Validation Logic ---
+    let is_valid = db_setup_ok && ilike_ok;
+
     tracing::info!(
         request_id = %request_id,
+        pg_trgm_enabled = pg_trgm_ok,
+        name_index_exists = name_index_ok,
+        scientific_name_index_exists = scientific_name_index_ok,
+        db_setup_valid = db_setup_ok,
         name_uses_ilike = name_uses_ilike,
         scientific_name_uses_ilike = scientific_name_uses_ilike,
-        still_using_like = still_using_like,
-        "Challenge validation check results"
+        still_using_like = still_using_like, // This should be false for ilike_ok to be true
+        ilike_usage_valid = ilike_ok,
+        overall_valid = is_valid,
+        "Challenge #2 validation check results"
     );
-    
-    // Both queries must use ILIKE for validation to pass
-    let is_valid = name_uses_ilike && scientific_name_uses_ilike;
-    
-    // Build a standardized response following the same format as other challenges
+
+    let mut message = String::new();
+    if is_valid {
+        message = "Solution correctly implemented! Database is optimized with pg_trgm and GIN indexes, and queries use ILIKE.".to_string();
+    } else {
+        message.push_str("Validation failed: ");
+        if !pg_trgm_ok {
+            message.push_str("The 'pg_trgm' extension is not enabled in the database. ");
+        }
+        if !name_index_ok {
+            message.push_str("A GIN trigram index on 'species.name' (e.g., 'species_name_gin_trgm_idx') is missing or incorrect. ");
+        }
+        if !scientific_name_index_ok {
+            message.push_str("A GIN trigram index on 'species.scientific_name' (e.g., 'species_scientific_name_gin_trgm_idx') is missing or incorrect. ");
+        }
+        if !ilike_ok {
+            if still_using_like {
+                message.push_str("Source code in 'src/challenges.rs' still uses LIKE instead of ILIKE for some queries. ");
+            } else if !name_uses_ilike || !scientific_name_uses_ilike {
+                message.push_str("Source code in 'src/challenges.rs' does not consistently use ILIKE for both name and scientific_name searches. ");
+            }
+        }
+        if !ilike_checks_possible && !is_valid { // Add this if markers were the primary issue for ILIKE
+             message.push_str("Could not find challenge markers in 'src/challenges.rs' to verify ILIKE usage. ");
+        }
+    }
+
     let response = json!({
         "valid": is_valid,
-        "message": if is_valid {
-            "Solution correctly implemented! Queries are now optimized for case-insensitive searches."
-        } else if still_using_like {
-            "Solution validation failed. You're still using case-sensitive LIKE instead of ILIKE for some queries."
-        } else {
-            "Solution validation failed. Make sure to use ILIKE for all queries to optimize case-insensitive searches."
-        },
+        "message": message.trim_end(),
         "system_component": {
             "name": "Species Database",
             "description": if is_valid {
                 "Species database search is now optimized"
             } else {
-                "Species database search is experiencing slowdowns"
+                "Species database search is experiencing slowdowns or is misconfigured"
             },
             "status": if is_valid { "normal" } else { "degraded" }
         }
     });
-    
+
     (StatusCode::OK, Json(response))
 }

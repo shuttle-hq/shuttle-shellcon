@@ -11,7 +11,8 @@ use crate::{
 };
 
 // ⚠️ CHALLENGE #2: DATABASE QUERY OPTIMIZATION ⚠️
-// This function uses a non-indexed LIKE query that's causing slow performance
+// The current text search implementation in this function is not optimized for performance
+// on large datasets. Review how it queries the database for species names.
 pub async fn get_species(
     Query(params): Query<SpeciesQuery>,
     State(state): State<AppState>,
@@ -157,6 +158,7 @@ pub async fn get_species(
     
     Ok(Json(species))
 }
+// ⚠️ END CHALLENGE CODE ⚠️
 
 // This function needs improved error handling for robustness
 pub async fn get_feeding_schedule(
