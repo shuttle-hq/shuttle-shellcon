@@ -11,10 +11,8 @@ use crate::{
 };
 
 // ⚠️ CHALLENGE #2: DATABASE QUERY OPTIMIZATION ⚠️
-// The issue is with how text search is being performed in the database. 
-// Look at how case-sensitivity is handled in the SQL queries and check the migration file (20250510000000_create_species.sql). 
-// You'll need to enable a PostgreSQL extension for text search optimization and create appropriate indexes for the text columns. 
-// PostgreSQL offers operators for more efficient case-insensitive pattern matching that would improve search performance.
+// The current text search implementation in this function is not optimized for performance
+// on large datasets. Review how it queries the database for species names.
 pub async fn get_species(
     Query(params): Query<SpeciesQuery>,
     State(state): State<AppState>,
