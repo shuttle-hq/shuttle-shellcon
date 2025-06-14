@@ -131,9 +131,8 @@ pub async fn get_species(
                     "Error executing species list query"
                 );
                 ApiError::Database(e)
-            })?
+            })?;
     };
-    // ⚠️ END CHALLENGE CODE ⚠️
     
     // Get query duration
     let elapsed = start.elapsed().as_millis();
