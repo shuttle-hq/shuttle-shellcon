@@ -132,7 +132,7 @@ pub async fn get_species(
                 );
                 ApiError::Database(e)
             })?
-    }
+    };
     
     // Get query duration
     let elapsed = start.elapsed().as_millis();
