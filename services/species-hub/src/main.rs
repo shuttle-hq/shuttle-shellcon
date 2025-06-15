@@ -69,7 +69,7 @@ struct AppState {
     pool: PgPool,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, sqlx::FromRow)]
 struct Species {
     id: i32,
     name: String,
