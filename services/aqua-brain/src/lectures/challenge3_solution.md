@@ -51,8 +51,9 @@ pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
 ## The Optimized Solution: "After"
 
 The optimized solution replaces `String` allocations with memory-efficient alternatives:
-1.  **Enums:** For status fields, we use the `ParameterStatus`, `FeedingStatus`, and `OverallHealth` enums already defined in `main.rs`. This is type-safe and avoids allocations.
-2.  **Static String Slices (`&'static str`):** For the `recommendations`, we use a vector of static string slices. These point to text compiled into the program binary, requiring zero runtime allocation.
+
+*   **Enums:** For status fields, we use the `ParameterStatus`, `FeedingStatus`, and `OverallHealth` enums already defined in `main.rs`. This is type-safe and avoids allocations.
+*   **Static String Slices (`&'static str`):** For the `recommendations`, we use a vector of static string slices. These point to text compiled into the program binary, requiring zero runtime allocation.
 
 Here is the final, correct implementation:
 
@@ -99,57 +100,6 @@ pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
             recommendations: vec![
                 "Verify tank ID",
                 "Setup monitoring system",
-            ],
-        },
-    }
-}
-```
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            HealthStatus::Normal => write!(f, "normal"),
-            HealthStatus::AtRisk => write!(f, "at_risk"),
-            HealthStatus::Critical => write!(f, "critical"),
-            HealthStatus::Unknown => write!(f, "unknown"),
-        }
-    }
-}
-
-// The optimized function using enums
-pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
-    // Define static recommendation strings
-    const REC_TEMP: &str = "Reduce temperature by 2°C";
-    const REC_PH: &str = "Adjust pH to 7.2-7.5 range";
-    const REC_FEED: &str = "Administer emergency feeding";
-    const REC_VERIFY: &str = "Verify tank ID";
-    const REC_SETUP: &str = "Setup monitoring system";
-
-    // Get tank_id or default to Tank-A1
-    let tank_id = params.tank_id.clone().unwrap_or_else(|| "Tank-A1".into());
-    
-    match tank_id.as_str() {
-        "Tank-A1" => AnalysisResult {
-            tank_id: tank_id.clone(),
-            species_id: params.species_id.unwrap_or(1),
-            timestamp: chrono::Utc::now().to_rfc3339(),
-            temperature_status: Status::Warning,
-            ph_status: Status::Critical,
-            oxygen_status: Status::Normal,
-            feeding_status: Status::Overdue,
-            overall_health: HealthStatus::AtRisk,
-            recommendations: vec![REC_TEMP.into(), REC_PH.into(), REC_FEED.into()],
-        },
-        _ => AnalysisResult {
-            tank_id: tank_id.clone(),
-            species_id: params.species_id.unwrap_or(0),
-            timestamp: chrono::Utc::now().to_rfc3339(),
-            temperature_status: Status::Unknown,
-            ph_status: Status::Unknown,
-            oxygen_status: Status::Unknown,
-            feeding_status: Status::Unknown,
-            overall_health: HealthStatus::Unknown,
-            recommendations: vec![
-                REC_VERIFY.into(),
-                REC_SETUP.into(),
             ],
         },
     }
@@ -379,9 +329,9 @@ pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult<'static> {
 
 ## Key Memory Optimization Insights
 
-1. **Use the right types**: Enums are more memory-efficient and type-safe than strings for fixed sets of values
-2. **Avoid unnecessary allocations**: Use Cow to avoid allocating for static content
-3. **Redesign your API**: Sometimes the best optimization requires changing your data structures
-4. **Consider the full system**: Memory optimization often requires looking beyond individual functions
+1.  **Use the right types**: Enums are more memory-efficient and type-safe than strings for fixed sets of values
+2.  **Avoid unnecessary allocations**: Use Cow to avoid allocating for static content
+3.  **Redesign your API**: Sometimes the best optimization requires changing your data structures
+4.  **Consider the full system**: Memory optimization often requires looking beyond individual functions
 
 These solutions demonstrate how idiomatic Rust can lead to both better performance and more maintainable code. By leveraging Rust's type system and ownership model, we can create APIs that are both efficient and expressive.
