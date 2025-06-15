@@ -128,11 +128,11 @@ pub async fn get_species(
                     request_id = %request_id,
                     error.type = "database",
                     error.message = %e,
-                    "Error executing species list query"
+                    "Error executing get all species query"
                 );
                 ApiError::Database(e)
-            })?;
-    };
+            })?
+    }
     
     // Get query duration
     let elapsed = start.elapsed().as_millis();
