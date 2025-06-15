@@ -1,8 +1,8 @@
-# Challenge 3: Memory Optimization - Solutions
+# Challenge 3: Memory Optimization - Solution Explained
 
-## The Problem: Excessive String Allocations
+## The Problem: "Before"
 
-The original code creates many unnecessary `String` allocations, which consume heap memory and trigger frequent garbage collection. This is particularly problematic when processing many tanks simultaneously.
+The original code created many unnecessary `String` allocations by calling `.to_string()` on string literals. This consumes heap memory and can slow down the service, especially under heavy load.
 
 ```rust
 // Before: Using dynamic String allocations for analysis results
@@ -48,56 +48,62 @@ pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
 }
 ```
 
-## Solution 1: Using Enums for Status Values
+## The Optimized Solution: "After"
 
-This solution uses enums to represent status values, which is more type-safe and memory-efficient than strings. It also makes the code more idiomatic by using Rust's type system to represent a fixed set of possible values.
+The optimized solution replaces `String` allocations with memory-efficient alternatives:
+1.  **Enums:** For status fields, we use the `ParameterStatus`, `FeedingStatus`, and `OverallHealth` enums already defined in `main.rs`. This is type-safe and avoids allocations.
+2.  **Static String Slices (`&'static str`):** For the `recommendations`, we use a vector of static string slices. These point to text compiled into the program binary, requiring zero runtime allocation.
+
+Here is the final, correct implementation:
 
 ```rust
-// Define enums for status values
-#[derive(Debug, Clone, PartialEq)]
-pub enum Status {
-    Normal,
-    Warning,
-    Critical,
-    Overdue,
-    Unknown,
-}
+// After: Optimized with enums and static strings
+use crate::{AnalysisParams, AnalysisResult, ParameterStatus, FeedingStatus, OverallHealth};
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum HealthStatus {
-    Normal,
-    AtRisk,
-    Critical,
-    Unknown,
-}
+pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
+    // Get tank_id or default to Tank-A1
+    let tank_id = params.tank_id.clone().unwrap_or_else(|| "Tank-A1".to_string());
+    // Determine status using enums from main.rs
+    let temperature_status = ParameterStatus::Warning;
+    let ph_status = ParameterStatus::Critical;
+    let oxygen_status = ParameterStatus::Normal;
+    let feeding_status = FeedingStatus::Overdue;
+    let overall_health = OverallHealth::AtRisk;
+    let recommendations: Vec<&'static str> = vec![
+        "Reduce temperature by 2°C",
+        "Adjust pH to 7.2-7.5 range",
+        "Administer emergency feeding",
+    ];
 
-// Update AnalysisResult to use enums instead of strings
-pub struct AnalysisResult {
-    pub tank_id: String,
-    pub species_id: i32,
-    pub timestamp: String,
-    pub temperature_status: Status,
-    pub ph_status: Status,
-    pub oxygen_status: Status,
-    pub feeding_status: Status,
-    pub overall_health: HealthStatus,
-    pub recommendations: Vec<String>,
-}
-
-// Implement Display for the enums to convert to strings when needed
-impl std::fmt::Display for Status {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Status::Normal => write!(f, "normal"),
-            Status::Warning => write!(f, "warning"),
-            Status::Critical => write!(f, "critical"),
-            Status::Overdue => write!(f, "overdue"),
-            Status::Unknown => write!(f, "unknown"),
-        }
+    match tank_id.as_str() {
+        "Tank-A1" => AnalysisResult {
+            tank_id: tank_id.clone(),
+            species_id: params.species_id.unwrap_or(1),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            temperature_status,
+            ph_status,
+            oxygen_status,
+            feeding_status,
+            overall_health,
+            recommendations,
+        },
+        _ => AnalysisResult {
+            tank_id: tank_id.clone(),
+            species_id: params.species_id.unwrap_or(0),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            temperature_status: ParameterStatus::Unknown,
+            ph_status: ParameterStatus::Unknown,
+            oxygen_status: ParameterStatus::Unknown,
+            feeding_status: FeedingStatus::Unknown,
+            overall_health: OverallHealth::Unknown,
+            recommendations: vec![
+                "Verify tank ID",
+                "Setup monitoring system",
+            ],
+        },
     }
 }
-
-impl std::fmt::Display for HealthStatus {
+```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             HealthStatus::Normal => write!(f, "normal"),

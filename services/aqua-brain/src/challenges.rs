@@ -4,8 +4,7 @@ use shuttle_axum::axum::{
     Json,
 };
 
-use crate::AnalysisParams;
-use crate::AnalysisResult;
+use crate::{AnalysisParams, AnalysisResult, ParameterStatus, FeedingStatus, OverallHealth}; // Import types from main.rs
 
 // Dedicated endpoint for testing Challenge #1
 pub async fn test_challenge_1() -> impl IntoResponse {
@@ -43,19 +42,18 @@ pub async fn test_challenge_1() -> impl IntoResponse {
 pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
     // Get tank_id or default to Tank-A1
     let tank_id = params.tank_id.clone().unwrap_or_else(|| "Tank-A1".to_string());
-    // Dynamically allocate status and recommendation strings
-    let temperature_status = "warning".to_string();
-    let ph_status = "critical".to_string();
-    let oxygen_status = "normal".to_string();
-    let feeding_status = "overdue".to_string();
-    let overall_health = "at_risk".to_string();
+    // Determine status using enums from main.rs
+    let temperature_status = ParameterStatus::Warning;
+    let ph_status = ParameterStatus::Critical;
+    let oxygen_status = ParameterStatus::Normal;
+    let feeding_status = FeedingStatus::Overdue;
+    let overall_health = OverallHealth::AtRisk;
     let recommendations: Vec<String> = vec![
         "Reduce temperature by 2°C".to_string(),
         "Adjust pH to 7.2-7.5 range".to_string(),
         "Administer emergency feeding".to_string(),
     ];
 
-    // Generate analysis result based on tank ID
     match tank_id.as_str() {
         "Tank-A1" => AnalysisResult {
             tank_id: tank_id.clone(),
@@ -66,17 +64,17 @@ pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
             oxygen_status,
             feeding_status,
             overall_health,
-            recommendations: recommendations.clone(),
+            recommendations,
         },
         _ => AnalysisResult {
             tank_id: tank_id.clone(),
             species_id: params.species_id.unwrap_or(0),
             timestamp: chrono::Utc::now().to_rfc3339(),
-            temperature_status: "unknown".to_string(),
-            ph_status: "unknown".to_string(),
-            oxygen_status: "unknown".to_string(),
-            feeding_status: "unknown".to_string(),
-            overall_health: "unknown".to_string(),
+            temperature_status: ParameterStatus::Unknown,
+            ph_status: ParameterStatus::Unknown,
+            oxygen_status: ParameterStatus::Unknown,
+            feeding_status: FeedingStatus::Unknown,
+            overall_health: OverallHealth::Unknown,
             recommendations: vec![
                 "Verify tank ID".to_string(),
                 "Setup monitoring system".to_string(),

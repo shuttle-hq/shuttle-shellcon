@@ -8,12 +8,76 @@ use shuttle_axum::axum::Router;
 use serde::{Deserialize, Serialize};
 // No unused imports
 use thiserror::Error;
-use std::fs;
+use tokio::fs;
+use tracing;
+
+// 🔱 Challenge 3: Core Types 🔱
+// These enums are used in AnalysisResult and should be used by the participant
+// when implementing challenges::get_analysis_result for Challenge 3.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ParameterStatus {
+    Normal,
+    Warning,
+    Critical,
+    Unknown,
+}
+
+impl std::fmt::Display for ParameterStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParameterStatus::Normal => write!(f, "normal"),
+            ParameterStatus::Warning => write!(f, "warning"),
+            ParameterStatus::Critical => write!(f, "critical"),
+            ParameterStatus::Unknown => write!(f, "unknown"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FeedingStatus {
+    Normal,
+    Overdue,
+    Unknown,
+}
+
+impl std::fmt::Display for FeedingStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FeedingStatus::Normal => write!(f, "normal"),
+            FeedingStatus::Overdue => write!(f, "overdue"),
+            FeedingStatus::Unknown => write!(f, "unknown"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OverallHealth {
+    Good,
+    AtRisk,
+    Critical,
+    Unknown,
+}
+
+impl std::fmt::Display for OverallHealth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OverallHealth::Good => write!(f, "good"),
+            OverallHealth::AtRisk => write!(f, "at_risk"),
+            OverallHealth::Critical => write!(f, "critical"),
+            OverallHealth::Unknown => write!(f, "unknown"),
+        }
+    }
+}
+// End of 🔱 Challenge 3: Core Types 🔱
 
 // Function to load lecture content from markdown files
-fn load_lecture(challenge_number: usize) -> String {
+async fn load_lecture(challenge_number: usize) -> String {
     let lecture_path = format!("src/lectures/challenge{}.md", challenge_number);
-    match fs::read_to_string(&lecture_path) {
+    match fs::read_to_string(&lecture_path).await {
         Ok(content) => content,
         Err(e) => {
             tracing::warn!(
@@ -27,9 +91,9 @@ fn load_lecture(challenge_number: usize) -> String {
 }
 
 // Function to load solution content from markdown files
-fn load_solution(challenge_number: usize) -> (String, String) {
+async fn load_solution(challenge_number: usize) -> (String, String) {
     let solution_path = format!("src/lectures/challenge{}_solution.md", challenge_number);
-    match fs::read_to_string(&solution_path) {
+    match fs::read_to_string(&solution_path).await {
         Ok(content) => {
             // Extract code and explanation from the content
             // The format is expected to be:
@@ -124,20 +188,22 @@ impl IntoResponse for ApiError {
     }
 }
 
+// Define application state
 #[derive(Clone)]
 struct AppState {}
 
-#[derive(Serialize, Deserialize, Clone)]
-struct AnalysisResult {
-    tank_id: String,
-    species_id: i32,
-    timestamp: String,
-    temperature_status: String,
-    ph_status: String,
-    oxygen_status: String,
-    feeding_status: String,
-    overall_health: String,
-    recommendations: Vec<String>,
+// Define analysis result structure
+#[derive(Debug, Serialize, Clone)] 
+pub struct AnalysisResult { 
+    pub tank_id: String,    
+    pub species_id: i32,
+    pub timestamp: String,
+    pub temperature_status: ParameterStatus, 
+    pub ph_status: ParameterStatus,          
+    pub oxygen_status: ParameterStatus,      
+    pub feeding_status: FeedingStatus,       
+    pub overall_health: OverallHealth,       
+    pub recommendations: Vec<String>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -189,34 +255,34 @@ async fn get_current_challenge() -> impl IntoResponse {
     
     // Define detailed challenge information
     // Load challenge solutions from markdown files
-    let (code1, explanation1) = load_solution(1);
-    let (code2, explanation2) = load_solution(2);
-    let (code3, explanation3) = load_solution(3);
-    let (code4, explanation4) = load_solution(4);
+    let (code1, explanation1) = load_solution(1).await;
+    let (code2, explanation2) = load_solution(2).await;
+    let (code3, explanation3) = load_solution(3).await;
+    let (code4, explanation4) = load_solution(4).await;
 
     // Create solution objects with the loaded content
     let challenge_1_solution = ChallengeSolution {
         code: code1,
         explanation: explanation1,
-        lecture: load_lecture(1),
+        lecture: load_lecture(1).await,
     };
     
     let challenge_2_solution = ChallengeSolution {
         code: code2,
         explanation: explanation2,
-        lecture: load_lecture(2),
+        lecture: load_lecture(2).await,
     };
     
     let challenge_3_solution = ChallengeSolution {
         code: code3,
         explanation: explanation3,
-        lecture: load_lecture(3),
+        lecture: load_lecture(3).await,
     };
     
     let challenge_4_solution = ChallengeSolution {
         code: code4,
         explanation: explanation4,
-        lecture: load_lecture(4),
+        lecture: load_lecture(4).await,
     };
     
     // Define challenge metadata for the current ongoing challenges
@@ -259,8 +325,8 @@ async fn get_current_challenge() -> impl IntoResponse {
             id: 3,
             name: "memory-optimization".to_string(),
             title: "String Allocation Optimization".to_string(),
-            description: "The analysis engine is using excessive memory, particularly when calculating status reports for multiple tanks. The issue seems to be with how strings are handled.".to_string(),
-            hint: "Examine how strings are created and returned in the analysis function. Reduce memory usage by: 1) using enums for fixed sets of values like status codes, 2) using static string references (&'static str) for fixed string values, 3) implementing Cow<'a, str> for flexible ownership, or 4) redesigning the API to combine these approaches for maximum efficiency.".to_string(),
+            description: "The analysis engine is using excessive memory, particularly when calculating status reports for multiple tanks. The issue seems to be with how strings are handled. A previous engineer started looking into optimizations and defined some helpful enums, but then went on holiday just before ShellCon... classic! It's up to you to finish the job.".to_string(),
+            hint: "The `get_analysis_result` function is creating too many String objects. To optimize it, look for the enums a previous engineer already defined for you in `main.rs`. Consider how to handle fixed recommendation strings efficiently too.".to_string(),
             service: "aqua-brain".to_string(),
             file: "src/challenges.rs".to_string(),
             function: "get_analysis_result".to_string(),
@@ -329,7 +395,7 @@ struct TankSummary {
     tank_id: String,
     species_id: i32,
     species_name: String,
-    overall_health: String,
+    overall_health: OverallHealth, // Changed from String
     timestamp: String,
 }
 
