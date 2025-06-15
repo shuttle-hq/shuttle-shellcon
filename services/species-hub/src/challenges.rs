@@ -17,11 +17,15 @@ pub async fn get_species(
     Query(params): Query<SpeciesQuery>,
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, ApiError> {
+    // Add request ID for correlation and timing
     let request_id = uuid::Uuid::new_v4().to_string();
     let start = std::time::Instant::now();
+    
+    // Create a non-nested span for species catalog search with request_id as context
     let span = tracing::info_span!("species_catalog_search", %request_id);
     let _guard = span.enter();
-
+    
+    // Log operation start with search params
     tracing::info!(
         request_id = %request_id,
         operation = "species_catalog_search",
@@ -29,73 +33,129 @@ pub async fn get_species(
         search_by_scientific_name = params.scientific_name.is_some(),
         "Starting species catalog search"
     );
-
+    
+    // Validate query parameters
     if let Some(name) = &params.name {
         if name.len() < 2 {
             return Err(ApiError::InvalidQuery("Name search term must be at least 2 characters".to_string()));
         }
     }
+    
     if let Some(scientific_name) = &params.scientific_name {
         if scientific_name.len() < 2 {
             return Err(ApiError::InvalidQuery("Scientific name search term must be at least 2 characters".to_string()));
         }
     }
-
-    let mut query_builder = sqlx::QueryBuilder::new("SELECT * FROM species WHERE 1=1");
-    let mut has_conditions = false;
-
-    if let Some(name) = &params.name {
-        query_builder.push(" AND name ILIKE ");
-        query_builder.push_bind(format!("%{}%", name));
-        has_conditions = true;
-    }
-
-    if let Some(scientific_name) = &params.scientific_name {
-        query_builder.push(" AND scientific_name ILIKE ");
-        query_builder.push_bind(format!("%{}%", scientific_name));
-        has_conditions = true;
-    }
-
-    if !has_conditions {
-        // If no search parameters, default to listing some species, or handle as an error/empty list
-        // For this example, let's limit to 20 if no specific search is made.
-        query_builder.push(" LIMIT 20");
+    
+    // Using case-sensitive query with LIKE (non-optimized)
+    // This requires a full table scan and doesn't utilize indexes effectively
+    let species = if let Some(name) = &params.name {
+        // Use runtime query with LIKE for case-sensitive search
+        sqlx::query("SELECT * FROM species WHERE name LIKE $1")
+            .bind(format!("%{}%", name))
+            .map(|row: PgRow| {
+                Species {
+                    id: row.get("id"),
+                    name: row.get("name"),
+                    scientific_name: row.get("scientific_name"),
+                    description: row.get("description"),
+                    min_temperature: row.get("min_temperature"),
+                    max_temperature: row.get("max_temperature"),
+                    min_ph: row.get("min_ph"),
+                    max_ph: row.get("max_ph"),
+                    diet_type: row.get("diet_type"),
+                }
+            })
+            .fetch_all(&state.pool)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    request_id = %request_id,
+                    error.type = "database",
+                    error.message = %e,
+                    "Error executing species name search query"
+                );
+                ApiError::Database(e)
+            })?
+    } else if let Some(scientific_name) = &params.scientific_name {
+        // Use runtime query with LIKE for case-sensitive search
+        sqlx::query("SELECT * FROM species WHERE scientific_name LIKE $1")
+            .bind(format!("%{}%", scientific_name))
+            .map(|row: PgRow| {
+                Species {
+                    id: row.get("id"),
+                    name: row.get("name"),
+                    scientific_name: row.get("scientific_name"),
+                    description: row.get("description"),
+                    min_temperature: row.get("min_temperature"),
+                    max_temperature: row.get("max_temperature"),
+                    min_ph: row.get("min_ph"),
+                    max_ph: row.get("max_ph"),
+                    diet_type: row.get("diet_type"),
+                }
+            })
+            .fetch_all(&state.pool)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    request_id = %request_id,
+                    error.type = "database",
+                    error.message = %e,
+                    "Error executing species scientific name search query"
+                );
+                ApiError::Database(e)
+            })?
     } else {
-        // Optionally, add a limit to specific searches too
-        query_builder.push(" ORDER BY name LIMIT 50");
-    }
-
-    let query = query_builder.build_query_as::<Species>();
-
-    let species_result = query
-        .fetch_all(&state.pool)
-        .await;
-
-    let species = match species_result {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::error!(
-                request_id = %request_id,
-                error.type = "database",
-                error.message = %e,
-                "Error executing species search query"
-            );
-            return Err(ApiError::Database(e));
-        }
+        // If no search parameters are provided, return all species (limit to 20)
+        sqlx::query("SELECT * FROM species LIMIT 20")
+            .map(|row: PgRow| {
+                Species {
+                    id: row.get("id"),
+                    name: row.get("name"),
+                    scientific_name: row.get("scientific_name"),
+                    description: row.get("description"),
+                    min_temperature: row.get("min_temperature"),
+                    max_temperature: row.get("max_temperature"),
+                    min_ph: row.get("min_ph"),
+                    max_ph: row.get("max_ph"),
+                    diet_type: row.get("diet_type"),
+                }
+            })
+            .fetch_all(&state.pool)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    request_id = %request_id,
+                    error.type = "database",
+                    error.message = %e,
+                    "Error executing species list query"
+                );
+                ApiError::Database(e)
+            })?
     };
-
+    // ⚠️ END CHALLENGE CODE ⚠️
+    
+    // Get query duration
     let elapsed = start.elapsed().as_millis();
+    
+    // Log performance and results
     tracing::info!(
         request_id = %request_id,
         operation = "species_catalog_search",
         operation_status = "success",
         query_duration_ms = elapsed as f64,
         results_count = species.len(),
-        db_query_type = if has_conditions { "species_search_optimized" } else { "species_list_all" },
-        search_term = params.name.as_deref().unwrap_or_else(|| params.scientific_name.as_deref().unwrap_or("N/A")),
+        db_query_type = "species_search",
+        search_term = params.name.as_deref().unwrap_or_else(|| params.scientific_name.as_deref().unwrap_or("")),
         "Species catalog search completed"
     );
-
+    
+    // If no species are found, we might want to return a specific error
+    // In this case we'll return empty results, but you could also:
+    // if species.is_empty() {
+    //     return Err(ApiError::SpeciesNotFound("No species matched your search criteria".to_string()));
+    // }
+    
     Ok(Json(species))
 }
 // ⚠️ END CHALLENGE CODE ⚠️
