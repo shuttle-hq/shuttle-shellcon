@@ -243,7 +243,7 @@ async fn get_current_challenge() -> impl IntoResponse {
             name: "database-optimization".to_string(),
             title: "The Slow Query".to_string(),
             description: "The species search functionality is extremely slow when users search for partial names. Database queries are taking too long, especially for text searches.".to_string(),
-            hint: "The species search is slow due to unoptimized text queries. To fix this, you'll need to enhance the database schema by enabling a PostgreSQL extension for text search and then adding appropriate indexes to the species table. Consider how database changes are typically managed with sequential, timestamped migration scripts. Also, ensure your Rust code uses case-insensitive query operators that can leverage these new indexes.".to_string(),
+            hint: "The issue is with how text search is being performed in the database. Look at how case-sensitivity is handled in the SQL queries. For a performant solution, you'll need to enable a PostgreSQL extension and create appropriate indexes. This requires a **new database migration script**, as modifying existing ones is not best practice. PostgreSQL also offers operators for more efficient case-insensitive pattern matching.".to_string(),
             service: "species-hub".to_string(),
             file: "src/challenges.rs".to_string(),
             function: "get_species".to_string(),
