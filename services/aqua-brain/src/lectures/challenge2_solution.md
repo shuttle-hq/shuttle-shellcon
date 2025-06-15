@@ -1,73 +1,87 @@
 ```rust
 // In services/species-hub/src/challenges.rs
-// The final get_species function after applying ILIKE and ensuring correct query construction.
-
-use axum::{extract::{Query, State}, http::StatusCode, response::IntoResponse, Json, Extension};
-use serde::Deserialize;
-use sqlx::{Postgres, Row, postgres::PgRow};
-use uuid::Uuid;
-use crate::{AppState, ApiError, Species}; // Assuming Species and ApiError are in scope
-
-#[derive(Deserialize)]
-pub struct SpeciesQuery {
-    pub name: Option<String>,
-    pub scientific_name: Option<String>,
-}
-
+// The final get_species function using sqlx::QueryBuilder.
 pub async fn get_species(
     Query(params): Query<SpeciesQuery>,
     State(state): State<AppState>,
-    Extension(request_id): Extension<Uuid> // Assuming request_id is passed as an extension
 ) -> Result<impl IntoResponse, ApiError> {
+    let request_id = uuid::Uuid::new_v4().to_string();
     let start = std::time::Instant::now();
-    let mut query_conditions = Vec::new();
-    let mut query_params_values: Vec<String> = Vec::new(); // To hold the actual string values for binding
+    let span = tracing::info_span!("species_catalog_search", %request_id);
+    let _guard = span.enter();
 
-    let mut param_idx = 1;
+    tracing::info!(
+        request_id = %request_id,
+        operation = "species_catalog_search",
+        search_by_name = params.name.is_some(),
+        search_by_scientific_name = params.scientific_name.is_some(),
+        "Starting species catalog search"
+    );
 
     if let Some(name) = &params.name {
-        query_conditions.push(format!("name ILIKE ${}", param_idx));
-        query_params_values.push(format!("%{}%", name));
-        param_idx += 1;
+        if name.len() < 2 {
+            return Err(ApiError::InvalidQuery("Name search term must be at least 2 characters".to_string()));
+        }
     }
     if let Some(scientific_name) = &params.scientific_name {
-        query_conditions.push(format!("scientific_name ILIKE ${}", param_idx));
-        query_params_values.push(format!("%{}%", scientific_name));
-        // param_idx += 1; // No need to increment if it's the last one
+        if scientific_name.len() < 2 {
+            return Err(ApiError::InvalidQuery("Scientific name search term must be at least 2 characters".to_string()));
+        }
     }
 
-    let species_list: Vec<Species> = if !query_conditions.is_empty() {
-        let query_str = format!(
-            "SELECT id, name, scientific_name, description, min_temperature, max_temperature, min_ph, max_ph, diet_type FROM species WHERE {} LIMIT 20",
-            query_conditions.join(" AND ")
-        );
-        
-        let mut running_query = sqlx::query_as::<Postgres, Species>(&query_str);
-        for val in query_params_values {
-            running_query = running_query.bind(val);
-        }
+    let mut query_builder = sqlx::QueryBuilder::new("SELECT * FROM species WHERE 1=1");
+    let mut has_conditions = false;
 
-        running_query
-            .fetch_all(&state.pool)
-            .await
-            .map_err(|e| {
-                tracing::error!(request_id = %request_id, error.type = "database", error.message = %e, "Error executing species list query with conditions");
-                ApiError::Database(e)
-            })?
+    if let Some(name) = &params.name {
+        query_builder.push(" AND name ILIKE ");
+        query_builder.push_bind(format!("%{}%", name));
+        has_conditions = true;
+    }
+
+    if let Some(scientific_name) = &params.scientific_name {
+        query_builder.push(" AND scientific_name ILIKE ");
+        query_builder.push_bind(format!("%{}%", scientific_name));
+        has_conditions = true;
+    }
+
+    if !has_conditions {
+        query_builder.push(" LIMIT 20");
     } else {
-        sqlx::query_as::<Postgres, Species>("SELECT id, name, scientific_name, description, min_temperature, max_temperature, min_ph, max_ph, diet_type FROM species LIMIT 20")
-            .fetch_all(&state.pool)
-            .await
-            .map_err(|e| {
-                tracing::error!(request_id = %request_id, error.type = "database", error.message = %e, "Error executing get all species query");
-                ApiError::Database(e)
-            })?
-    };
-    
-    let elapsed = start.elapsed().as_millis();
-    tracing::info!(request_id = %request_id, "Species query executed in {}ms, found {} results", elapsed, species_list.len());
+        query_builder.push(" ORDER BY name LIMIT 50");
+    }
 
-    Ok((StatusCode::OK, Json(species_list)))
+    let query = query_builder.build_query_as::<Species>();
+
+    let species_result = query
+        .fetch_all(&state.pool)
+        .await;
+
+    let species = match species_result {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!(
+                request_id = %request_id,
+                error.type = "database",
+                error.message = %e,
+                "Error executing species search query"
+            );
+            return Err(ApiError::Database(e));
+        }
+    };
+
+    let elapsed = start.elapsed().as_millis();
+    tracing::info!(
+        request_id = %request_id,
+        operation = "species_catalog_search",
+        operation_status = "success",
+        query_duration_ms = elapsed as f64,
+        results_count = species.len(),
+        db_query_type = if has_conditions { "species_search_optimized" } else { "species_list_all" },
+        search_term = params.name.as_deref().unwrap_or_else(|| params.scientific_name.as_deref().unwrap_or("N/A")),
+        "Species catalog search completed"
+    );
+
+    Ok(Json(species))
 }
 ```
 
@@ -105,13 +119,25 @@ For this challenge, you need to:
 
 When your `species-hub` service next starts, `sqlx::migrate!` will automatically detect this new migration file and apply it to your database, adding the extension and indexes.
 
-**Step 2: Update Rust Code to Use `ILIKE`**
+**Step 2: Update Rust Code to Use `ILIKE` with `sqlx::QueryBuilder`**
 
-After preparing the database schema with the `pg_trgm` extension and GIN indexes via your new migration, you need to modify your Rust code in `services/species-hub/src/challenges.rs`. Specifically, within the `get_species` function, change the SQL queries to use the `ILIKE` operator instead of `LIKE`.
+After preparing the database schema with the `pg_trgm` extension and GIN indexes via your new migration, you need to modify your Rust code in `services/species-hub/src/challenges.rs`. The `get_species` function should be updated to use `sqlx::QueryBuilder` for dynamically constructing the SQL query. This approach allows for more flexible query building, especially when dealing with optional search parameters.
 
-`ILIKE` is PostgreSQL's case-insensitive version of `LIKE`. It allows for pattern matching regardless of letter casing and, importantly, can leverage the trigram GIN indexes you've just created. This combination results in fast, case-insensitive searches.
+Within the `get_species` function, you will use `query_builder.push()` to add segments to your SQL query and `query_builder.push_bind()` to safely bind parameter values. The key is to use `ILIKE` for case-insensitive pattern matching, which can leverage the trigram GIN indexes you've created.
 
-The updated Rust code for `get_species` is shown in the snippet at the beginning of this solution. Key changes involve replacing `LIKE` with `ILIKE` in your query strings.
+For example, to add a condition for searching the `name` column:
+```rust
+if let Some(name) = &params.name {
+    query_builder.push(" AND name ILIKE ");
+    query_builder.push_bind(format!("%{}%", name));
+    has_conditions = true;
+}
+```
+This dynamically adds `AND name ILIKE $N` (where `$N` is a placeholder for the bound parameter) to your query if a name parameter is provided.
+
+`ILIKE` is PostgreSQL's case-insensitive version of `LIKE`. It allows for pattern matching regardless of letter casing. When combined with trigram GIN indexes, this results in fast, case-insensitive searches.
+
+The complete updated Rust code for `get_species` using `sqlx::QueryBuilder` is shown in the snippet at the beginning of this solution.
 
 **Why these changes are effective:**
 

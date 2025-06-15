@@ -60,13 +60,16 @@ let species = sqlx::query_as::<_, Species>(
 ### After Optimization:
 
 ```rust
-// Step 1: First, ensure you've set up the trigram extension and index
-// This is typically done in your migration files (e.g., 20250510000000_create_species.sql)
-// You should NOT create these in your Rust code at runtime
+// Step 1: Create a *new* migration file to set up the trigram extension and indexes.
+// It's crucial to add these schema changes in a **new** migration script.
+// Modifying an existing migration file (like the initial `20250510000000_create_species_table.sql`)
+// after it has been applied will cause errors when `sqlx` checks migration checksums.
+// Always create a new timestamped .sql file in your `migrations` directory for new schema changes.
 
-// In your migration file:
+// In your *new* migration file (e.g., `YYYYMMDDHHMMSS_add_trgm_indexes.sql`):
 // CREATE EXTENSION IF NOT EXISTS pg_trgm;
-// CREATE INDEX IF NOT EXISTS species_name_trigram_idx ON species USING GIN (name gin_trgm_ops);
+// CREATE INDEX IF NOT EXISTS species_name_gin_trgm_idx ON species USING GIN (name gin_trgm_ops);
+// CREATE INDEX IF NOT EXISTS species_scientific_name_gin_trgm_idx ON species USING GIN (scientific_name gin_trgm_ops);
 
 // Step 2: Use ILIKE with your indexed column in your Rust code
 let species = sqlx::query_as::<_, Species>(
