@@ -117,7 +117,7 @@ For this challenge, you need to:
     CREATE INDEX IF NOT EXISTS species_scientific_name_gin_trgm_idx ON species USING GIN (scientific_name gin_trgm_ops);
     ```
 
-When your `species-hub` service next starts, `sqlx::migrate!` will automatically detect this new migration file and apply it to your database, adding the extension and indexes.
+When your `species-hub` service next starts (e.g., by running `shuttle run` if it's stopped, or by stopping and restarting it if it's already running), the `sqlx::migrate!` macro (used internally by Shuttle when managing PostgreSQL resources) will automatically detect this new migration file. It will then apply it to your database, adding the extension and indexes.
 
 **Step 2: Update Rust Code to Use `ILIKE` with `sqlx::QueryBuilder`**
 
