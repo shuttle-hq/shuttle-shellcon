@@ -319,9 +319,9 @@ async fn validate_query_optimization(
                 .any(|line| line.contains(pattern))
         };
         (
-            is_uncommented("WHERE name ILIKE $1"),
-            is_uncommented("WHERE scientific_name ILIKE $1"),
-            is_uncommented("WHERE name LIKE $1") || is_uncommented("WHERE scientific_name LIKE $1")
+            is_uncommented("query_builder.push(\" AND name ILIKE \")"),
+            is_uncommented("query_builder.push(\" AND scientific_name ILIKE \")"),
+            is_uncommented("query_builder.push(\" AND name LIKE \")") || is_uncommented("query_builder.push(\" AND scientific_name LIKE \")")
         )
     } else {
         tracing::warn!(
