@@ -11,14 +11,9 @@ CREATE TABLE IF NOT EXISTS species (
     diet_type VARCHAR(50) NOT NULL
 );
 
--- Enable the pg_trgm extension for trigram-based text searching (similarity matching)
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-
--- Create GIN indexes using trigram operations for efficient ILIKE searches
--- These indexes will significantly speed up partial and case-insensitive text searches
--- on the name and scientific_name columns as required by Challenge 2.
-CREATE INDEX IF NOT EXISTS species_name_gin_trgm_idx ON species USING GIN (name gin_trgm_ops);
-CREATE INDEX IF NOT EXISTS species_scientific_name_gin_trgm_idx ON species USING GIN (scientific_name gin_trgm_ops);
+-- Index will be added as part of challenge 2
+-- CREATE INDEX IF NOT EXISTS idx_species_name ON species(name);
+-- CREATE INDEX IF NOT EXISTS idx_species_scientific_name ON species(scientific_name);
 
 -- Insert sample data
 INSERT INTO species (name, scientific_name, description, min_temperature, max_temperature, min_ph, max_ph, diet_type)
