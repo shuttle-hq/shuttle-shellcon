@@ -1,53 +1,125 @@
-# Challenge 4 Solution: Resource Leak Prevention
+# Challenge 4 Solution: Fixing "The Leaky Connection" in `aqua-monitor`
 
-## Problem: Creating a new HTTP client for every request
+This document explains how to solve Challenge 4 by optimizing HTTP client usage in the `get_sensor_status` function of the `aqua-monitor` service.
+
+## The Problem: Creating a New HTTP Client Per Request
+
+The original `get_sensor_status` function in `aqua-monitor/src/challenges.rs` created a new `reqwest::Client` every time it was called:
 
 ```rust
-// Before: Creating a new client for every request
-// This causes resource leaks and excessive memory usage
-pub async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoResponse {
-    // Create a span for sensor status check with request ID for correlation
-    let request_id = uuid::Uuid::new_v4().to_string();
-    let span = tracing::info_span!(
-        "tank_sensor_status_check",
-        request_id = %request_id
-    );
-    let _guard = span.enter();
+// In aqua-monitor/src/challenges.rs (Before the fix)
+use shuttle_axum::axum::{extract::State, response::IntoResponse};
+use crate::AppState; // Assuming AppState is defined
+// ... other imports
 
-    // BAD: Creating a new client for every request
-    // This causes memory and resource leaks
+pub async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoResponse {
+    let request_id = uuid::Uuid::new_v4().to_string();
+    // ... tracing setup ...
+
+    // ⚠️ PROBLEM: Creating a new client for each request (resource leak)
     let client = reqwest::Client::new();
     
-    // Log metrics about connection creation
     tracing::info!(
         request_id = %request_id,
         "Created new HTTP client for request"
     );
     
-    // Rest of the function remains the same
-    // but creates a new client every time
+    // ... rest of the function using the new client ...
+    // Example:
+    // match client.get("https://api.example.com/sensors").send().await { ... }
+    serde_json::json!({ "status": "error", "message": "using new client" }) // Placeholder
+}
+```
+This approach leads to resource inefficiency, as explained in the challenge description.
+
+## The Solution: Using Axum's Application State (Recommended for `aqua-monitor`)
+
+The best way to fix this in an Axum application like `aqua-monitor` is to create the `reqwest::Client` once at application startup and share it via Axum's `AppState`.
+
+### Step 1: Modify `AppState` in `aqua-monitor/src/main.rs`
+
+Add the `reqwest::Client` to your `AppState` struct:
+
+```rust
+// In aqua-monitor/src/main.rs
+use reqwest::Client;
+use sqlx::PgPool; // Assuming PgPool is used
+
+#[derive(Clone)]
+struct AppState {
+    pool: PgPool,        // Existing field
+    http_client: Client, // Our new shared HTTP client
 }
 ```
 
-## Solution 1: Using Axum's Application State Pattern (Recommended)
+### Step 2: Initialize the Client at Startup in `aqua-monitor/src/main.rs`
 
-This is the most idiomatic approach for Axum applications, providing clear dependency injection and making testing easier.
+In your `axum` main function, create the client and add it to the `AppState`:
 
 ```rust
-// In main.rs where we build the application:
+// In aqua-monitor/src/main.rs (axum main function)
+use shuttle_axum::axum::{routing::get, Router};
+// ... other necessary imports ...
 
-// First, define an AppState struct that includes the HTTP client
-pub struct AppState {
-    client: reqwest::Client,
-    // ... other state fields as needed
+#[shuttle_runtime::main]
+async fn axum(#[shuttle_shared_db::Postgres] pool: PgPool) -> shuttle_axum::ShuttleAxum {
+    // ... (database migration if any) ...
+
+    // Create the client once
+    let http_client = Client::builder()
+        .timeout(std::time::Duration::from_secs(10)) // Example configuration
+        .build()
+        .expect("Failed to build HTTP client");
+    
+    // Initialize AppState with the shared client
+    let state = AppState { pool, http_client };
+    
+    let router = Router::new()
+        // ... other routes ...
+        .route("/api/sensors/status", get(crate::challenges::get_sensor_status)) // Ensure path to handler is correct
+        .with_state(state);
+
+    Ok(router.into())
 }
+```
 
-// Then, in your main function or app setup:
-let client = reqwest::Client::builder()
-    .timeout(std::time::Duration::from_secs(30))
-    .build()
-    .expect("Failed to build HTTP client");
+### Step 3: Use the Shared Client in `aqua-monitor/src/challenges.rs`
 
+Modify `get_sensor_status` to use the client from the `AppState`:
+
+```rust
+// In aqua-monitor/src/challenges.rs (After the fix)
+use shuttle_axum::axum::{extract::State, response::IntoResponse};
+use crate::AppState; // Make sure AppState is accessible
+// ... other imports ...
+
+pub async fn get_sensor_status(State(state): State<AppState>) -> impl IntoResponse {
+    let request_id = uuid::Uuid::new_v4().to_string();
+    // ... tracing setup ...
+
+    // SOLUTION: Use the shared client from AppState
+    let client = &state.http_client;
+    
+    tracing::info!(
+        request_id = %request_id,
+        "Using shared HTTP client from AppState for request"
+    );
+    
+    // Now, use 'client' to make your HTTP requests
+    // Example:
+    // match client.get("https://api.example.com/sensors").send().await { ... }
+    serde_json::json!({ "status": "ok", "message": "using shared client" }) // Placeholder
+}
+```
+
+### Why this is better:
+
+*   **Resource Efficiency:** The `reqwest::Client` (with its connection pool and TLS sessions) is created only once.
+*   **Performance:** Reusing connections is much faster than establishing new ones.
+*   **Clean Architecture:** Follows Axum's recommended pattern for managing shared resources.
+*   **Testability:** Easier to mock or provide a test client in `AppState` during testing.
+
+This completes Challenge 4, making the `aqua-monitor` service more robust and performant!
 // Add the client to your app state
 let state = AppState { client };
 

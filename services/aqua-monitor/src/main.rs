@@ -382,68 +382,60 @@ async fn validate_resource_leak_solution(
     // Extract just the challenge code section
     let challenge_code = &source_code[challenge_start.unwrap()..challenge_end.unwrap() + "// ⚠️ END CHALLENGE CODE ⚠️".len()];
     
-    // Check for module-level static HTTP client definition (outside challenge section)
-    // or client in app state (also a valid approach)
-    let has_static_client = source_code.contains("static HTTP_CLIENT") || 
-                            source_code.contains("static CLIENT") ||
-                            source_code.contains("client: reqwest::Client") ||
-                            source_code.contains("http_client: reqwest::Client");
-    
-    // Simple function to check if a pattern exists in uncommented code
-    let is_uncommented = |pattern: &str| -> bool {
-        challenge_code.lines()
+    // Helper to check for uncommented patterns within the get_sensor_status function body
+    let is_uncommented_in_handler = |pattern: &str| -> bool {
+        challenge_code.lines() // challenge_code is the extracted get_sensor_status body
             .filter(|line| !line.trim().starts_with("//"))
             .any(|line| line.contains(pattern))
     };
+
+    // Core validation checks for the AppState pattern:
+    // 1. The handler must NOT create a new reqwest::Client.
+    //    We check for both "reqwest::Client::new()" and "Client::new()" to be thorough.
+    let handler_avoids_new_client = !is_uncommented_in_handler("reqwest::Client::new()") && !is_uncommented_in_handler("Client::new()");
     
-    // Check for use of static client instead of creating new client
-    // Allow more flexible usage patterns including direct CLIENT usage and &CLIENT (deref coercion)
-    let uses_static_client = is_uncommented("&*HTTP_CLIENT") || 
-                             is_uncommented("HTTP_CLIENT.") ||
-                             is_uncommented("&*CLIENT") ||
-                             is_uncommented("&CLIENT") ||
-                             is_uncommented("CLIENT.") ||
-                             is_uncommented("CLIENT") ||
-                             is_uncommented("state.client") ||
-                             is_uncommented("state.http_client");
-    
-    // No new client if either there's no Client::new() call at all, or it's only used with Lazy::new
-    // or if it's only used once for initialization in the app state
-    let no_new_client = !is_uncommented("Client::new()") || 
-                        challenge_code.contains("Lazy::new") ||
-                        (source_code.contains("client: reqwest::Client") && 
-                         source_code.matches("Client::new()").count() <= 1);
-    
-    // Log what we're finding in the challenge code
+    // 2. The handler MUST use the client from AppState.
+    let handler_uses_app_state_client = is_uncommented_in_handler("state.http_client") || is_uncommented_in_handler("state.client");
+
+    // Log these findings
     tracing::info!(
         request_id = %request_id,
-        has_static_client = has_static_client,
-        uses_static_client = uses_static_client,
-        no_new_client = no_new_client,
-        "Challenge code check results"
+        handler_avoids_new_client,
+        handler_uses_app_state_client,
+        "Validation checks for AppState client usage in handler"
     );
+
+    let is_valid = handler_avoids_new_client && handler_uses_app_state_client;
     
-    // All checks must pass for validation to succeed
-    let is_valid = has_static_client && uses_static_client && no_new_client;
-    
-    // Build a standardized response following the same format as other challenges
-    let response = json!({
+    let mut message = String::new();
+    if is_valid {
+        message = "Solution correctly implemented! HTTP client is now shared via AppState and resource-efficient.".to_string();
+    } else {
+        if !handler_avoids_new_client {
+            message.push_str("Validation failed: The `get_sensor_status` function should not create a new `reqwest::Client::new()`. ");
+        }
+        if !handler_uses_app_state_client {
+            message.push_str("Validation failed: The `get_sensor_status` function must use the shared HTTP client from `AppState` (e.g., `state.http_client` or `state.client`). ");
+        }
+        if message.is_empty() { // Should not happen if is_valid is false, but as a fallback
+            message = "Solution validation failed. Ensure `get_sensor_status` uses a shared `reqwest::Client` from `AppState` and does not create new clients.".to_string();
+        }
+    }
+
+    // Build a standardized response
+    let response_json = json!({
         "valid": is_valid,
-        "message": if is_valid {
-            "Solution correctly implemented! HTTP client is now shared and resource-efficient."
-        } else {
-            "Solution validation failed. Please implement a shared HTTP client using one of these approaches: 1) a static CLIENT with once_cell/lazy_static, 2) storing the client in AppState, or 3) another approach that avoids creating a new client for each request."
-        },
+        "message": message.trim(),
         "system_component": {
             "name": "Sensor Status API",
             "description": if is_valid {
                 "Sensor status API is now resource-efficient"
             } else {
-                "Sensor status API is creating too many client instances"
+                "Sensor status API is creating too many client instances or not using the shared one correctly"
             },
             "status": if is_valid { "normal" } else { "degraded" }
         }
     });
     
-    (StatusCode::OK, Json(response))
+    (StatusCode::OK, Json(response_json))
 }

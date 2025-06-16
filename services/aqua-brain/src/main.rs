@@ -343,7 +343,7 @@ async fn get_current_challenge() -> impl IntoResponse {
             name: "resource-leak".to_string(),
             title: "The Leaky Connection".to_string(),
             description: "The sensor status API is creating a new HTTP client for every request, causing excessive resource usage and potential memory leaks.".to_string(),
-            hint: "Look for where a new HTTP client is being created for each request in the get_sensor_status function. Creating HTTP clients is expensive! Each client maintains connection pools, TLS configurations, and system resources. To fix this, create a shared, static HTTP client that can be reused across all requests. Consider using lazy_static or once_cell to create a properly initialized static client.".to_string(),
+            hint: "The `get_sensor_status` function in `aqua-monitor/src/challenges.rs` creates a new HTTP client for each request. Since this is an Axum handler, the best practice is to initialize a `reqwest::Client` once and store it in `aqua-monitor`'s `AppState`. Then, access this shared client via the `State` extractor in the handler. This avoids resource waste and improves performance.".to_string(),
             service: "aqua-monitor".to_string(),
             file: "src/challenges.rs".to_string(),
             function: "get_sensor_status".to_string(),

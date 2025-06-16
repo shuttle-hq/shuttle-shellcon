@@ -31,13 +31,13 @@ pub async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoRespo
     //   2. Use a static client with once_cell/lazy_static
     //   3. Or another approach that avoids creating a new client per request
     
-    // PROBLEM: Creating a new client for each request (resource leak)
-    let client = reqwest::Client::new();
+    // ORIGINAL PROBLEMATIC CODE: Create a new client for every request
+    let client = reqwest::Client::new(); 
     
-    // Log metrics about connection creation
+    // Log that we are creating a new client
     tracing::info!(
         request_id = %request_id,
-        "Created new HTTP client for request"
+        "Creating new HTTP client for request (Challenge #4 unsolved)"
     );
 
     // ⚠️ END CHALLENGE CODE ⚠️
@@ -51,7 +51,7 @@ pub async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoRespo
 
     // Try to get sensor data from external API
     match client
-        .get("https://api.example.com/sensors")
+        .get("https://api.example.com/sensors") 
         .timeout(Duration::from_secs(2))
         .send()
         .await
