@@ -224,7 +224,7 @@ async fn health_check() -> impl IntoResponse {
     // Create a span for species database health check
     let span = tracing::info_span!("species_database_health");
     let _guard = span.enter();
-    StatusCode::OK
+    (StatusCode::OK, "Species Hub service is running")
 }
 
 // Note: Rate limiting functionality would be implemented here in a real system

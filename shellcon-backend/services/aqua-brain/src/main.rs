@@ -385,7 +385,7 @@ async fn axum() -> shuttle_axum::ShuttleAxum {
 }
 
 async fn health_check() -> impl IntoResponse {
-    StatusCode::OK
+    (StatusCode::OK, "Aqua Brain service is running")
 }
 
 // Define a summary struct for collection response
