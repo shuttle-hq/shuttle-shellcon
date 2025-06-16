@@ -290,7 +290,7 @@ async fn get_current_challenge() -> impl IntoResponse {
             name: "async-io".to_string(),
             title: "The Blocking Bottleneck".to_string(),
             description: "The tank parameter validation process is using blocking I/O operations, causing performance issues during peak usage. This is causing the monitoring system to miss critical water quality changes.".to_string(),
-            hint: "The `get_tank_readings` function in `aqua-monitor` currently uses blocking I/O, which impacts performance. Your main tasks are to: 1. Convert the blocking file I/O operations to be asynchronous using a suitable runtime like Tokio. 2. Ensure that this asynchronous operation is properly instrumented for tracing. You'll need to create a tracing span and find an idiomatic way to associate it with the asynchronous task to accurately capture its execution.".to_string(),
+            hint: "The `get_tank_readings` function in `aqua-monitor` currently uses blocking I/O, which impacts performance. Your main tasks are to: 1. Convert the blocking file I/O operations to be asynchronous using a suitable runtime like Tokio. 2. Ensure that this asynchronous operation is properly instrumented for tracing. You'll need to create a tracing span and find an idiomatic way to associate it with the asynchronous task. Be aware that you might need to add a new crate to `aqua-monitor`'s dependencies to help with tracing futures.".to_string(),
             service: "aqua-monitor".to_string(),
             file: "src/challenges.rs".to_string(),
             function: "get_tank_readings".to_string(),
