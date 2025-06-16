@@ -113,6 +113,7 @@ async fn axum(#[shuttle_shared_db::Postgres] pool: PgPool) -> shuttle_axum::Shut
 
     // Build router
     let router = Router::new()
+        .layer(tower_http::trace::TraceLayer::new_for_http())
         .route("/api/tanks", get(get_all_tanks))
         .route("/api/tanks/:tank_id/readings", get(challenges::get_tank_readings))
         .route(

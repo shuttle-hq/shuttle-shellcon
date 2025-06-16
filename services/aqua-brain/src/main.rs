@@ -242,9 +242,7 @@ struct Challenge {
 }
 
 async fn get_current_challenge() -> impl IntoResponse {
-    // Create a span for tracking challenge metadata requests
-    let span = tracing::info_span!("challenge_metadata_request");
-    let _guard = span.enter();
+
     let request_id = uuid::Uuid::new_v4().to_string();
     
     tracing::info!(
@@ -372,6 +370,7 @@ async fn axum() -> shuttle_axum::ShuttleAxum {
     
     // Build router
     let router = Router::new()
+        .layer(tower_http::trace::TraceLayer::new_for_http())
         .route("/api/analysis/tanks", get(get_all_tank_analysis))
         .route("/api/analysis/tanks/:tank_id", get(get_tank_analysis_by_id))
         .route("/api/challenges/current", get(get_current_challenge))

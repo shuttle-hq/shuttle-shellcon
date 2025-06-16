@@ -129,6 +129,7 @@ async fn axum(
     
     // Build router
     let router = Router::new()
+        .layer(tower_http::trace::TraceLayer::new_for_http())
         .route("/api/species", get(challenges::get_species))
         .route("/api/species/:id", get(get_species_by_id))
         .route("/api/species/:species_id/feeding-schedule", get(challenges::get_feeding_schedule))
