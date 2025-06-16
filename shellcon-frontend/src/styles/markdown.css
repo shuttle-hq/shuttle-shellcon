@@ -1,0 +1,49 @@
+
+/* Markdown styling */
+.md-content h1 {
+  @apply text-2xl font-bold mb-4 text-orange-300 border-b border-orange-500/30 pb-2;
+}
+
+.md-content h2 {
+  @apply text-xl font-bold mt-5 mb-3 text-green-300;
+}
+
+.md-content h3 {
+  @apply text-lg font-semibold mt-4 mb-2 text-blue-300;
+}
+
+.md-content p {
+  @apply mb-4 leading-relaxed;
+}
+
+.md-content ul {
+  @apply mb-4 ml-6 list-disc space-y-1;
+}
+
+.md-content ol {
+  @apply mb-4 ml-6 list-decimal space-y-1;
+}
+
+.md-content li {
+  @apply mb-1;
+}
+
+.md-content code {
+  @apply px-1 py-0.5 rounded text-xs bg-black/50 border border-gray-700 text-orange-300 font-mono;
+}
+
+.md-content pre {
+  @apply p-3 mb-4 rounded-md bg-black/80 overflow-x-auto border border-gray-700;
+}
+
+.md-content pre code {
+  @apply bg-transparent border-0 p-0 text-gray-300 block;
+}
+
+.md-content blockquote {
+  @apply pl-4 border-l-4 border-green-500/50 italic text-gray-400 my-4;
+}
+
+.md-content a {
+  @apply text-blue-400 hover:text-blue-300 underline transition-colors;
+}

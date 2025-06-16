@@ -1,0 +1,141 @@
+
+@layer components {
+  .card-hover {
+    @apply transition-all duration-300 hover:shadow-lg hover:border-orange-400;
+  }
+  
+  .glass-effect {
+    @apply backdrop-blur-sm bg-black/40 border border-orange-400/30;
+  }
+  
+  /* Modern futuristic text styles */
+  .futuristic-title {
+    @apply font-mono font-bold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-orange-500 via-orange-400 to-amber-300;
+    text-shadow: 0 0 20px rgba(249, 115, 22, 0.2);
+  }
+  
+  /* Main heading styles */
+  .shellcon-main-title {
+    @apply font-sans font-extrabold tracking-tight text-transparent !important;
+    background-clip: text !important;
+    background-image: linear-gradient(to right, #f97316, #fbbf24, #f59e0b) !important;
+    text-shadow: 0 0 30px rgba(249, 115, 22, 0.3);
+    letter-spacing: -0.025em;
+    color: transparent !important;
+    font-family: 'Inter', system-ui, sans-serif !important;
+  }
+  
+  /* Section heading styles */
+  .shellcon-section-title {
+    @apply font-sans font-bold tracking-tight text-transparent !important;
+    background-clip: text !important;
+    background-image: linear-gradient(to bottom right, #f97316, #fbbf24, #f59e0b) !important;
+    text-shadow: 0 0 15px rgba(249, 115, 22, 0.2);
+    color: transparent !important;
+  }
+  
+  .futuristic-text {
+    @apply font-light tracking-wide text-gray-300;
+  }
+  
+  .tech-mono {
+    @apply font-mono tracking-wider;
+  }
+  
+  /* Card gradient backgrounds */
+  .card-gradient {
+    @apply bg-gradient-to-b from-gray-900 to-black;
+  }
+  
+  /* Card shine effect */
+  .card-shine {
+    @apply relative overflow-hidden;
+  }
+  
+  .card-shine::after {
+    @apply content-[''] absolute -top-[200%] left-[-100%] w-[50%] h-[200%] opacity-0 transform rotate-30 bg-gradient-to-t from-transparent via-white/10 to-transparent pointer-events-none;
+    animation: shineEffect 5s ease-in-out infinite;
+  }
+  
+  @keyframes shineEffect {
+    0% { opacity: 0; transform: translateY(0) rotate(25deg); }
+    25% { opacity: 0.5; }
+    50% { opacity: 0; transform: translateY(200%) rotate(25deg); }
+    100% { opacity: 0; }
+  }
+  
+  /* Status card effects */
+  .status-card {
+    @apply relative overflow-hidden backdrop-blur-sm shadow-lg transition-all duration-300;
+    background-image: radial-gradient(circle at bottom right, var(--status-color-faint, rgba(0,0,0,0)), transparent 70%);
+  }
+  
+  .online-glow {
+    --status-color: rgba(74, 222, 128, 0.5);
+    --status-color-faint: rgba(74, 222, 128, 0.05);
+    @apply shadow-[0_0_15px_rgba(74,222,128,0.2)];
+  }
+  
+  .degraded-glow {
+    --status-color: rgba(250, 204, 21, 0.5);
+    --status-color-faint: rgba(250, 204, 21, 0.05);
+    @apply shadow-[0_0_15px_rgba(250,204,21,0.2)];
+  }
+  
+  .offline-glow {
+    --status-color: rgba(239, 68, 68, 0.5);
+    --status-color-faint: rgba(239, 68, 68, 0.05);
+    @apply shadow-[0_0_15px_rgba(239,68,68,0.2)];
+  }
+  
+  .orange-glow {
+    --status-color: rgba(249, 115, 22, 0.5);
+    --status-color-faint: rgba(249, 115, 22, 0.05);
+    @apply shadow-[0_0_15px_rgba(249,115,22,0.2)];
+  }
+  
+  /* Title styles with static icon */
+  .title-with-icon {
+    @apply flex items-center gap-2;
+  }
+  
+  .title-icon {
+    /* Animation completely removed - now static */
+  }
+  
+  /* Card header title style */
+  .card-header-title {
+    @apply flex items-center gap-2;
+  }
+  
+  /* Update existing header styles */
+  .header-with-mascot {
+    @apply relative overflow-hidden;
+  }
+  
+  .header-mascot {
+    @apply absolute opacity-10 transition-opacity duration-300 z-0 pointer-events-none rotate-12 right-6 top-1/2 -translate-y-1/2;
+  }
+  
+  /* Animation for the Ferris crab */
+  .crab-dance {
+    @apply animate-bounce;
+  }
+  
+  /* Mascot styles */
+  .mascot-container {
+    @apply relative overflow-hidden;
+  }
+  
+  .mascot-background {
+    @apply absolute right-0 -bottom-4 opacity-10 transition-opacity duration-300 z-0 pointer-events-none;
+  }
+  
+  .mascot-background:hover {
+    @apply opacity-15;
+  }
+  
+  .mascot-footer {
+    @apply absolute opacity-20 transition-all duration-300 z-0 pointer-events-none;
+  }
+}
