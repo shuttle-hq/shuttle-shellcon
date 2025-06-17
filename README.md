@@ -63,7 +63,7 @@ If a port is busy: `lsof -ti :<port> | xargs kill -9` then retry.
 ```bash
 cd frontend
 npm install                 # first time only
-#If ports 8000-8002 are not available on your machine, check the "Environment files (frontend)" section below to customize the ports. 
+#If ports 8000-8002 are not available on your machine, check the "Environment files – local development" section below to customize the ports. 
 npm run dev:localhost        # opens http://localhost:8080
 ```
 In the **System Control Panel** click each button – no red errors should appear.
@@ -126,35 +126,9 @@ VITE_SPECIES_HUB_URL=http://localhost:8021
 VITE_AQUA_BRAIN_URL=http://localhost:8022
 VITE_API_BASE_URL=/api  # leave as /api unless you modify the proxy rules
 ```
-
-Example **.env.prod** (cloud):
-```env
-VITE_AQUA_MONITOR_URL=https://aqua-monitor-xxxxx.shuttleapp.app
-VITE_SPECIES_HUB_URL=https://species-hub-xxxxx.shuttleapp.app
-VITE_AQUA_BRAIN_URL=https://aqua-brain-xxxxx.shuttleapp.app
-VITE_API_BASE_URL=/api
-```
-
 Steps:
 1. `touch frontend/.env.localhost` and adjust if needed.
 2. Restart the dev server whenever you edit an `.env*` file.
-
----
-### 🌐 Environment files – cloud deployment (`.env.prod`)
-Create `frontend/.env.prod` **after** you deploy each service with Shuttle.
-
-The file should contain:
-```env
-# where <aqua-monitor> etc. are your Shuttle project IDs (shown after deploy)
-VITE_AQUA_MONITOR_URL=https://<aqua-monitor>.shuttleapp.app   # <aqua-monitor> is your project ID
-VITE_SPECIES_HUB_URL=https://<species-hub>.shuttleapp.app     # <species-hub> is your project ID
-VITE_AQUA_BRAIN_URL=https://<aqua-brain>.shuttleapp.app       # <aqua-brain> is your project ID
-VITE_API_BASE_URL=/api
-```
-Run the dashboard against the cloud:
-```bash
-npm run dev:prod
-```
 
 ---
 
@@ -166,8 +140,6 @@ npm run dev:prod
 | 3 | `aqua-brain/src/challenges.rs::get_analysis_result` | String allocations |
 | 4 | `aqua-monitor/src/challenges.rs::get_sensor_status` | HTTP-client reuse |
 
-Hints & full write-ups live in `services/aqua-brain/src/lectures/`.
-
 Workflow per challenge:
 1. Read the lecture / hint.
 2. Edit the code inside the marked `// ⚠️ CHALLENGE` block.
@@ -175,24 +147,6 @@ Workflow per challenge:
 4. Click **Validate** in the UI.
 
 Complete all four – the UI unlocks confetti! 🎉
-
----
-<!-- FAQ section moved below -->
-
-**Q: Shuttle complains I’m not logged in.**  
-A: Run `shuttle login` once (see “One-time Shuttle setup”).
-
-**Q: A port is already in use.**  
-A: `lsof -ti :<port> | xargs kill -9` frees it before re-running.
-
-**Q: The UI shows red banners / fetch errors.**  
-A: Check that each backend terminal shows `Listening on 0.0.0.0:PORT` and that your `.env*` URLs match.
-
-**Q: Validation keeps failing even after I fixed the code.**  
-A: Restart the corresponding service, then click *Validate* again; the validator inspects live code.
-
-**Q: How do I reset a service database?**  
-A: Stop the service, delete `services/<service>/.local-data`, and rerun `shuttle run --port …`.
 
 ---
 ## ☁️ Deploy & validate in the **cloud**
@@ -238,7 +192,7 @@ A: Check that each backend terminal shows `Listening on 0.0.0.0:PORT` and that y
 A: Restart the corresponding service, then click *Validate* again; the validator inspects live code.
 
 **Q: How do I reset a service database?**  
-A: Stop the service, delete `services/<service>/.local-data`, and rerun `shuttle run --port …`.
+A: Find the Docker container for the desired PostgreSQL database (there will be two databases serving ShellCon microservices), and delete it using `docker rm -f <container_name>`. Then restart the service using `shuttle run --port <port>`.
 
 ---
 ## 🩹 Troubleshooting cheat-sheet
@@ -258,3 +212,5 @@ A: Stop the service, delete `services/<service>/.local-data`, and rerun `shuttle
 * Shuttle local dev → cloud deployment workflow
 
 Good luck, Rustacean – the aquarium (and Ferris the crab 🦀) is counting on you!
+
+> **Note:** Any contribution to the project is welcome! Please open an issue or a pull request.
