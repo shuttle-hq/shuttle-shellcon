@@ -6,7 +6,7 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
 # Install Shuttle CLI
-RUN curl -sSf https://docs.shuttle.dev/install.sh | sh
+RUN curl -sSfL https://www.shuttle.dev/install | bash
 
 # Set up environment variables
 ENV RUST_BACKTRACE=1
