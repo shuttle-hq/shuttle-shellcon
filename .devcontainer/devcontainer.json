@@ -1,6 +1,9 @@
 {
   "name": "ShellCon Aquarium System",
-  "image": "mcr.microsoft.com/devcontainers/rust:latest",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "."
+  },
   "features": {},
   "customizations": {
     "vscode": {
@@ -23,6 +26,5 @@
       }
     }
   },
-
   "remoteUser": "vscode"
 }
