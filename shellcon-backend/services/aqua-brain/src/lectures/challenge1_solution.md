@@ -1,4 +1,3 @@
-```rust
 // Before: Blocking implementation with synchronous tracing
 pub async fn get_tank_readings(
     Path(tank_id): Path<String>,
@@ -60,7 +59,41 @@ pub async fn get_tank_readings(
     
     // ... rest of function omitted for brevity ...
 }
+
+---
+
+## 📋 Full copy-paste solution (between the markers)
+
+Paste the following code **inside** your `get_tank_readings` handler, replacing everything between the `// ⚠️ CHALLENGE #1: ASYNC I/O ⚠️` and `// ⚠️ END CHALLENGE CODE ⚠️` comments:
+
+```rust
+// ⚠️ CHALLENGE #1: ASYNC I/O ⚠️
+// Create a span specifically for file I/O operations
+let io_span = tracing::info_span!("file_io_operation");
+
+// Read the file asynchronously and attach the span to the future
+let config = tokio::fs::read_to_string("./config/tank_settings.json")
+    .instrument(io_span) // span is active for every poll of the future
+    .await
+    .unwrap_or_else(|e| {
+        tracing::warn!(
+            request_id = %request_id,
+            tank_id = %tank_id,
+            error = %e,
+            "Failed to read tank_settings.json, using default"
+        );
+        "{}".to_string()
+    });
+
+// Parse summarized tank settings
+let settings: TankSettingsSummary = serde_json::from_str(&config).unwrap_or_default();
+// ⚠️ END CHALLENGE CODE ⚠️
 ```
+
+> This snippet satisfies all validator checks:
+> 1. Uses `tokio::fs::read_to_string` (async I/O)
+> 2. Contains no blocking calls (`std::fs`, `std::thread::sleep`)
+> 3. Employs `tracing::info_span!` + `.instrument()` for precise async tracing.
 
 This solution addresses both the performance bottleneck and proper tracing in async contexts. Here are the key improvements:
 
@@ -74,9 +107,12 @@ This solution addresses both the performance bottleneck and proper tracing in as
         ```toml
         tracing-futures = "0.2.5"
         ```
-    *   **Use `.instrument()`**: The `Instrument` trait from this new crate provides the `.instrument()` method. This is the idiomatic way to associate a `span` with a `future`.
-        *   The `io_span` is attached directly to the `tokio::fs::read_to_string` future.
-        *   You'll need to import the trait at the top of your file: `use tracing_futures::Instrument;`.
+    *   **Use `.instrument()`** – this method is provided by the `Instrument` trait in the `tracing-futures` crate and is the idiomatic way to tie a `span` to an async `Future`.
+    *   Attach `io_span` directly to the `tokio::fs::read_to_string` future.
+    *   Import the trait in your file header:
+        ```rust
+        use tracing_futures::Instrument;
+        ```
 
 3.  **Why `.instrument()` is Preferred for Async Tracing**:
     *   **Precision**: `.instrument(span)` ensures the `span` is entered *every time* the instrumented future is polled and exited when the poll returns. This precisely ties the span's lifecycle to the future's actual execution.

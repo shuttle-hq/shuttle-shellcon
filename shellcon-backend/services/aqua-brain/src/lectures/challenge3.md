@@ -51,18 +51,24 @@ let recommendations: Vec<&'static str> = vec![
 ```
 
 By making these changes, you will significantly improve the memory efficiency of the analysis engine. Good luck!
+
+### Bonus: Borrowed vs Owned with `Cow`
+
+```rust
 fn get_status(id: &str) -> Cow<'static, str> {
-    Cow::Borrowed("warning")  // No allocation if borrowed is sufficient
+    // Borrowed data – zero allocation
+    Cow::Borrowed("warning")
 }
 
-// Use case where allocation happens only when needed
+// Allocation happens only when we actually need ownership
 fn get_message(custom: Option<String>) -> Cow<'static, str> {
     match custom {
-        Some(text) => Cow::Owned(text),            // Use provided String
-        None => Cow::Borrowed("default message"),  // No allocation
+        Some(text) => Cow::Owned(text),          // Allocation here
+        None => Cow::Borrowed("default message"), // Still zero-alloc
     }
 }
 ```
+
 
 ## Solution 4: Combining Enums and Cow
 

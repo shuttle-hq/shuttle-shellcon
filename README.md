@@ -106,16 +106,10 @@ The dashboard is split into five panels:
 | **System Status** | Live backend connectivity and challenge status shown as **Normal** or **Error/Degraded**. |
 | **Optimization Challenges**| Cards describing each challenge with _Show Hint_, _Validate_, _View Solution_, and _Teach Me How It Works_ buttons. |
 
-After all challenges pass, every service status should switch to **Normal** and a confetti animation will celebrate your victory.
-
-#### Key UI capabilities
-* **Interactive Challenge Cards** – hint, validate, full solution, plus status badge.
-* **System Visualization & Status** – live backend connectivity and tank health.
-* **Persistent state** – challenge completion and status are stored in `localStorage` so they survive page reloads.
-* **Rich Log Console** – real-time stream of API requests and validator output.
-
 ---
 ### ⚙️ Environment files – local development (`.env.localhost`)
+
+> IMPORTANT: Use the following custom environment variables ONLY if ports 8000-8002 are already in use on your machine.
 
 `vite.config.ts` looks for three variables but falls back to the default localhost ports 8000-8002:
 
@@ -126,6 +120,10 @@ VITE_AQUA_BRAIN_URL      (default http://localhost:8002)
 ```
 
 You override them by specifying other ports, as shown in the example below.
+
+Steps:
+1. `touch frontend/.env.localhost` and adjust if needed.
+2. Restart the dev server whenever you edit an `.env*` file.
 
 | File | When Vite picks it up | Typical use |
 |------|----------------------|-------------|
@@ -139,10 +137,6 @@ VITE_SPECIES_HUB_URL=http://localhost:8021
 VITE_AQUA_BRAIN_URL=http://localhost:8022
 VITE_API_BASE_URL=/api  # leave as /api unless you modify the proxy rules
 ```
-Steps:
-1. `touch frontend/.env.localhost` and adjust if needed.
-2. Restart the dev server whenever you edit an `.env*` file.
-
 ---
 
 ### 3 · Solve the optimisation challenges
@@ -156,8 +150,9 @@ Steps:
 Workflow per challenge:
 1. Read the lecture / hint.
 2. Edit the code inside the marked `// ⚠️ CHALLENGE` block.
-3. Re-run **only** that service (`Ctrl-C`, then `shuttle run --port …`).
-4. Click **Validate** in the UI.
+3. For some challenges, you’ll also need to modify `main.rs` to adjust relevant structures and functions so they can be imported in `challenges.rs`.
+4. Re-run **only** that service (`Ctrl-C`, then `shuttle run --port …`).
+5. Click **Validate** in the UI.
 
 Complete all four – the UI unlocks confetti! 🎉
 
@@ -167,7 +162,8 @@ Complete all four – the UI unlocks confetti! 🎉
 1. For each service:
    ```bash
    cd services/<service>
-   shuttle deploy                # choose “CREATE NEW”, project name = folder name
+   shuttle deploy
+   # choose “CREATE NEW”, project name = folder name (e.g aqua-brain)
    ```
 2. Configure the **frontend for cloud**:
    ```bash
@@ -202,7 +198,10 @@ A: `lsof -ti :<port> | xargs kill -9` frees it before re-running.
 A: Check that each backend terminal shows `Listening on 0.0.0.0:PORT` and that your `.env*` URLs match.
 
 **Q: Validation keeps failing even after I fixed the code.**  
-A: Restart the corresponding service, then click *Validate* again; the validator inspects live code.
+A: Restart the corresponding service, then click *Validate* again; the validator inspects live code. When you validate a function, you can see more details about the validation results in shuttle logs (`shuttle logs --latest`). For example, if you validate the `get_tank_readings` function, you can see the following validation results in the logs:
+```text
+Challenge validation check results request_id=f576a0f6-059b-464c-bddb-0205748e1418 uses_async_io=true no_blocking_operations=true has_proper_tracing=true
+```
 
 **Q: How do I reset a service database?**  
 A: Find the Docker container for the desired PostgreSQL database (there will be two databases serving ShellCon microservices), and delete it using `docker rm -f <container_name>`. Then restart the service using `shuttle run --port <port>`.

@@ -52,10 +52,20 @@ pub fn get_analysis_result(params: AnalysisParams) -> AnalysisResult {
 
 The optimized solution replaces `String` allocations with memory-efficient alternatives:
 
-*   **Enums:** For status fields, we use the `ParameterStatus`, `FeedingStatus`, and `OverallHealth` enums already defined in `main.rs`. This is type-safe and avoids allocations.
-*   **Static String Slices (`&'static str`):** For the `recommendations`, we use a vector of static string slices. These point to text compiled into the program binary, requiring zero runtime allocation.
+*   **Enums:** For status fields, we use the `ParameterStatus`, `FeedingStatus`, and `OverallHealth` enums already defined in `main.rs`. This is type-safe and avoids allocations.  
+*   **Static String Slices (`&'static str`):** For the `recommendations`, we use a vector of static string slices. These point to text compiled into the program binary, requiring zero runtime allocation.  
+*   **Struct Update:** Because we're switching to static string slices, update the `recommendations` field in `AnalysisResult` (found in `main.rs`) to `Vec<&'static str>` so the types line up.
 
-Here is the final, correct implementation:
+First, update the `AnalysisResult` struct in `main.rs`:
+
+```rust
+pub struct AnalysisResult {
+    // ... other fields ...
+    pub recommendations: Vec<&'static str>,
+}
+```
+
+Then use the following implementation for `get_analysis_result`:
 
 ```rust
 // After: Optimized with enums and static strings

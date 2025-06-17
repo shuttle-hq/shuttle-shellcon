@@ -9,7 +9,7 @@ The original `get_sensor_status` function in `aqua-monitor/src/challenges.rs` cr
 ```rust
 // In aqua-monitor/src/challenges.rs (Before the fix)
 use shuttle_axum::axum::{extract::State, response::IntoResponse};
-use crate::AppState; // Assuming AppState is defined
+use crate::AppState;
 // ... other imports
 
 pub async fn get_sensor_status(State(_state): State<AppState>) -> impl IntoResponse {
@@ -43,7 +43,6 @@ Add the `reqwest::Client` to your `AppState` struct:
 ```rust
 // In aqua-monitor/src/main.rs
 use reqwest::Client;
-use sqlx::PgPool; // Assuming PgPool is used
 
 #[derive(Clone)]
 struct AppState {
@@ -120,6 +119,10 @@ pub async fn get_sensor_status(State(state): State<AppState>) -> impl IntoRespon
 *   **Testability:** Easier to mock or provide a test client in `AppState` during testing.
 
 This completes Challenge 4, making the `aqua-monitor` service more robust and performant!
+
+Below is a compact recap showing where the shared client is wired into Axum:
+
+```rust
 // Add the client to your app state
 let state = AppState { client };
 
@@ -153,6 +156,7 @@ pub async fn get_sensor_status(State(state): State<AppState>) -> impl IntoRespon
     // but now uses the shared client from app state
 }
 ```
+
 
 ## Solution 2: Using Static HTTP Client with once_cell or LazyLock
 
