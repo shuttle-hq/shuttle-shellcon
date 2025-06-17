@@ -1,4 +1,3 @@
-# No database required for the aqua-brain service since it only communicates with the other services
 [deploy]
 include = ["src/*"]
 

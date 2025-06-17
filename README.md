@@ -48,36 +48,49 @@ shuttle login
 ## 🚀 Quick-start – **Local**
 
 ### 1 · Launch the back-end services
-Open three terminals:
+
+First off, clone this repository on your local machine:
+
+```bash
+# Clone the repository
+git clone https://github.com/shuttle-hq/shuttle-shellcon.git
+# Change directory to the cloned repository
+cd shuttle-shellcon
+```
+
+Run the following commands in three separate terminals:
 ```bash
 # Terminal 1
-cd services/aqua-monitor && shuttle run --port 8000
+cd shellcon-backend/services/aqua-monitor && shuttle run --port 8000
 # Terminal 2
-cd services/species-hub  && shuttle run --port 8001
+cd shellcon-backend/services/species-hub  && shuttle run --port 8001
 # Terminal 3
-cd services/aqua-brain  && shuttle run --port 8002
+cd shellcon-backend/services/aqua-brain  && shuttle run --port 8002
 ```
-If a port is busy: `lsof -ti :<port> | xargs kill -9` then retry.
+If a port is busy: `lsof -ti :<port> | xargs kill -9` then retry. Alternatively, you can use the environment files to customize the ports as shown in the "Environment files – local development" section below.
 
 ### 2 · Start the dashboard & confirm every API call locally
+
+Open a new terminal and run the following commands at the root of the repository:
 ```bash
-cd frontend
+cd shellcon-frontend
 npm install                 # first time only
-#If ports 8000-8002 are not available on your machine, check the "Environment files – local development" section below to customize the ports. 
 npm run dev:localhost        # opens http://localhost:8080
 ```
+Then open http://localhost:8080 in your browser and click "Read Story Now" to begin the ShellCon scenario.
+
 In the **System Control Panel** click each button – no red errors should appear.
 
 | UI action | Request | Service |
 |-----------|---------|---------|
 | View all tanks | GET `/api/tanks` | aqua-monitor |
-| Tank readings  | GET `/api/tanks/{id}/readings` | aqua-monitor |
-| Sensor status  | GET `/api/sensors/status` | aqua-monitor |
-| List species   | GET `/api/species` | species-hub |
-| Species details | GET `/api/species/{id}` | species-hub |
-| Feeding schedule | GET `/api/species/{id}/feeding-schedule` | species-hub |
-| All tank analysis | GET `/api/analysis/tanks` | aqua-brain |
-| Single tank analysis | GET `/api/analysis/tanks/{id}` | aqua-brain |
+| Fetch tank readings  | GET `/api/tanks/{id}/readings` | aqua-monitor |
+| Check sensor status  | GET `/api/sensors/status` | aqua-monitor |
+| List all species   | GET `/api/species` | species-hub |
+| Get species details | GET `/api/species/{id}` | species-hub |
+| Get feeding schedule | GET `/api/species/{id}/feeding-schedule` | species-hub |
+| View all tank analysis | GET `/api/analysis/tanks` | aqua-brain |
+| Tank health analysis | GET `/api/analysis/tanks/{id}` | aqua-brain |
 
 > Challenges only affect **performance/validation** – the endpoint contracts above stay identical before & after solving them.
 
@@ -88,7 +101,7 @@ The dashboard is split into five panels:
 
 | Panel | What it shows |
 |-------|---------------|
-| **Scenario Banner** (top) | A short narrative that frames why youre fixing the aquarium – read it first! |
+| **Scenario Banner** (top) | A short narrative that frames why you are fixing the aquarium – read it first! |
 | **System Control Panel** | Action buttons that call the REST endpoints listed above. |
 | **System Status** | Live backend connectivity and challenge status shown as **Normal** or **Error/Degraded**. |
 | **Optimization Challenges**| Cards describing each challenge with _Show Hint_, _Validate_, _View Solution_, and _Teach Me How It Works_ buttons. |
