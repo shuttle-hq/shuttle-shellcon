@@ -32,6 +32,7 @@ frontend/         # React dashboard
 * Docker Desktop (Postgres for local Shuttle)
 * [Shuttle CLI](https://docs.shuttle.dev) (latest)
 * Node ≥16 & npm (or Yarn/Bun)
+* DevContainers extension (>= 0.301.0) for VSCode if you want to use the devcontainer
 
 ### 🔑 One-time Shuttle setup
 Install or update the Shuttle CLI, then **log in** before running any `shuttle run` or `shuttle deploy` commands.
