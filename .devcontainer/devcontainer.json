@@ -1,15 +1,15 @@
 {
-  "name": "ShellCon Aquarium System",
-  "build": {
-    "dockerfile": "Dockerfile",
-    "context": "."
-  },
+  "name": "ShellCon DevContainer",
+  "image": "ghcr.io/shuttle-hq/shuttle-shellcon-devcontainer:latest",
   "features": {
     "ghcr.io/devcontainers/features/node:1": {
       "version": "20"
-    },
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+    }
   },
+  "forwardPorts": [
+    8080,
+    8000
+  ],
   "mounts": [
     "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
   ],
@@ -34,5 +34,5 @@
       }
     }
   },
-  "remoteUser": "vscode"
+  "remoteUser": "root"
 }

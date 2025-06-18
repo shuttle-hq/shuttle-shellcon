@@ -1,14 +1,12 @@
 FROM mcr.microsoft.com/devcontainers/rust:latest
 
-# Install additional packages
-RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
-    && apt-get -y install curl wget htop \
-    && apt-get clean -y && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get install -y docker.io curl wget htop && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Shuttle CLI
 RUN cargo install cargo-shuttle
 
-# Set up environment variables
 ENV RUST_BACKTRACE=1
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 WORKDIR /workspaces
