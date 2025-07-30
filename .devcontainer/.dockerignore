@@ -1,3 +1,5 @@
 .DS_Store
 solutions/
 .windsurf/
+node_modules/
+target/

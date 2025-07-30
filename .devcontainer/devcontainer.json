@@ -7,14 +7,11 @@
   "features": {
     "ghcr.io/devcontainers/features/node:1": {
       "version": "20"
-    },
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
-    "ghcr.io/devcontainers/features/common-utils:2": {
-      "installZsh": "true",
-      "configureZshAsDefaultShell": "true",
-      "installOhMyZsh": "true"
     }
   },
+  "mounts": [
+    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+  ],
   "forwardPorts": [
     8080,
     8000
@@ -29,14 +26,7 @@
       ],
       "settings": {
         "editor.formatOnSave": true,
-        "rust-analyzer.checkOnSave.command": "clippy",
-        "terminal.integrated.defaultProfile.linux": "bash",
-        "terminal.integrated.profiles.linux": {
-          "bash": {
-            "path": "bash",
-            "icon": "terminal-bash"
-          }
-        }
+        "rust-analyzer.checkOnSave.command": "clippy"
       }
     }
   },
