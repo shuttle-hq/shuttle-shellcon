@@ -10,7 +10,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}/devcontainer
+  IMAGE_NAME: shuttle-hq/shuttle-shellcon-devcontainer
 
 jobs:
   build-and-push:
@@ -51,7 +51,18 @@ jobs:
 
     - name: Make package public
       run: |
-        gh api --method PATCH /user/packages/container/${{ github.event.repository.name }}/devcontainer/versions \
-          --field visibility=public || true
+        # Wait a bit for the package to be available
+        sleep 10
+        
+        # Make the shuttle-shellcon-devcontainer package public
+        gh api --method PATCH /orgs/shuttle-hq/packages/container/shuttle-shellcon-devcontainer \
+          --field visibility=public || echo "Failed to make package public, may already be public"
+        
+        # Also try making specific versions public
+        PACKAGE_VERSIONS=$(gh api /orgs/shuttle-hq/packages/container/shuttle-shellcon-devcontainer/versions --jq '.[].id' 2>/dev/null || echo "")
+        for version_id in $PACKAGE_VERSIONS; do
+          gh api --method PATCH /orgs/shuttle-hq/packages/container/shuttle-shellcon-devcontainer/versions/$version_id \
+            --field visibility=public || echo "Failed to make version $version_id public"
+        done
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

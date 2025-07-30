@@ -1,6 +1,6 @@
 {
   "name": "ShellCon DevContainer",
-  "image": "mcr.microsoft.com/devcontainers/rust:latest",
+  "image": "ghcr.io/shuttle-hq/shuttle-shellcon-devcontainer:latest",
   "runArgs": [
     "--add-host=host.docker.internal:host-gateway"
   ],
@@ -15,7 +15,6 @@
       "installOhMyZsh": "true"
     }
   },
-  "postCreateCommand": "cargo install cargo-shuttle --locked",
   "forwardPorts": [
     8080,
     8000
