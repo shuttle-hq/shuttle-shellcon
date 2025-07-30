@@ -4,11 +4,6 @@
   "runArgs": [
     "--add-host=host.docker.internal:host-gateway"
   ],
-  "features": {
-    "ghcr.io/devcontainers/features/node:1": {
-      "version": "20"
-    }
-  },
   "mounts": [
     "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
   ],
@@ -21,10 +16,7 @@
   "customizations": {
     "vscode": {
       "extensions": [
-        "rust-lang.rust-analyzer",
-        "tamasfe.even-better-toml",
-        "vadimcn.vscode-lldb",
-        "rangav.vscode-thunder-client"
+        "rust-lang.rust-analyzer"
       ],
       "settings": {
         "editor.formatOnSave": true,

@@ -80,10 +80,12 @@ This maps the container's default bridge gateway to `host.docker.internal`, allo
 ### Using the DevContainer
 
 1. Open the project in VS Code
-2. When prompted, select "Reopen in Container" or use Command Palette → "Dev Containers: Reopen in Container"
-3. The container will build and start with all dependencies pre-installed
+2. When prompted, select "Reopen in Container" or use Command Palette → "Dev Containers: Reopen in Container" 
+3. **First time setup** (30 seconds): Run `./.devcontainer/setup-node.sh` to install Node.js 20
 4. Run `shuttle login` to authenticate
 5. Follow normal development workflow with `shuttle run` commands
+
+**Fast startup**: The DevContainer now starts in ~15 seconds with minimal extensions, then you can install Node.js only when needed for frontend development.
 
 ## Challenge System
 
