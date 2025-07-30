@@ -1,21 +1,17 @@
 {
   "name": "ShellCon DevContainer",
-  "image": "mcr.microsoft.com/devcontainers/rust:latest",
+  "image": "ghcr.io/vfiftyfive/shellcon/devcontainer:latest",
   "runArgs": [
     "--add-host=host.docker.internal:host-gateway"
   ],
   "features": {
     "ghcr.io/devcontainers/features/node:1": {
       "version": "20"
-    },
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
-    "ghcr.io/devcontainers/features/common-utils:2": {
-      "installZsh": "true",
-      "configureZshAsDefaultShell": "true",
-      "installOhMyZsh": "true"
     }
   },
-  "postCreateCommand": "cargo install cargo-shuttle --locked",
+  "mounts": [
+    "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+  ],
   "forwardPorts": [
     8080,
     8000
