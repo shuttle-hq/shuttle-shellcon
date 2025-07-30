@@ -1,0 +1,35 @@
+{
+  "name": "ShellCon DevContainer",
+  "image": "mcr.microsoft.com/devcontainers/rust:latest",
+  "runArgs": [
+    "--add-host=host.docker.internal:host-gateway"
+  ],
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": "true",
+      "configureZshAsDefaultShell": "true",
+      "installOhMyZsh": "true"
+    }
+  },
+  "postCreateCommand": "cargo install cargo-shuttle --locked",
+  "forwardPorts": [8080, 8000],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "vadimcn.vscode-lldb",
+        "rangav.vscode-thunder-client"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "rust-analyzer.checkOnSave.command": "clippy"
+      }
+    }
+  },
+  "remoteUser": "root"
+}
