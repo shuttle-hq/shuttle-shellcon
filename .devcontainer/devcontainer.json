@@ -1,5 +1,5 @@
 {
-  "name": "ShellCon DevContainer",
+  "name": "ShellCon Development Environment",
   "image": "ghcr.io/shuttle-hq/shuttle-shellcon-devcontainer:latest",
   "runArgs": [
     "--add-host=host.docker.internal:host-gateway"
