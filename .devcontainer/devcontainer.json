@@ -2,7 +2,8 @@
   "name": "ShellCon Development Environment",
   "image": "ghcr.io/shuttle-hq/shuttle-shellcon-devcontainer:latest",
   "runArgs": [
-    "--add-host=host.docker.internal:host-gateway"
+    "--add-host=host.docker.internal:host-gateway",
+    "--network=host"
   ],
   "mounts": [
     "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"

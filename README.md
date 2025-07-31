@@ -32,6 +32,7 @@ frontend/         # React dashboard
 * Docker Desktop (Postgres for local Shuttle)
 * [Shuttle CLI](https://docs.shuttle.dev) (latest)
 * Node ≥16 & npm (or Yarn/Bun)
+* **OR** VS Code with Dev Containers extension (for containerized development)
 
 ### 🔑 One-time Shuttle setup
 Install or update the Shuttle CLI, then **log in** before running any `shuttle run` or `shuttle deploy` commands.
@@ -45,9 +46,58 @@ shuttle login
 ```
 
 ---
-## 🚀 Quick-start – **Local**
+## 🚀 Quick-start
 
-### 1 · Launch the back-end services
+### Option A: DevContainer Environment (Recommended)
+
+The easiest way to get started is using the pre-configured DevContainer that includes all tools and dependencies.
+
+#### Setup Steps:
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/shuttle-hq/shuttle-shellcon.git
+   cd shuttle-shellcon
+   ```
+
+2. **Open in VS Code and start DevContainer:**
+   - Open VS Code in the project directory
+   - When prompted, click "Reopen in Container" OR
+   - Use Command Palette (`Cmd/Ctrl+Shift+P`) → "Dev Containers: Reopen in Container"
+   - Wait for the container to start (should be fast with pre-built image)
+
+3. **Authenticate with Shuttle:**
+   ```bash
+   shuttle login
+   ```
+
+4. **Launch all backend services in separate terminals:**
+   ```bash
+   # Terminal 1 - Aqua Monitor (Environmental sensors)
+   cd shellcon-backend/services/aqua-monitor && shuttle run --port 8000
+   
+   # Terminal 2 - Species Hub (Species database) 
+   cd shellcon-backend/services/species-hub && shuttle run --port 8001
+   
+   # Terminal 3 - Aqua Brain (Analytics engine)
+   cd shellcon-backend/services/aqua-brain && shuttle run --port 8002
+   ```
+
+5. **Start the frontend dashboard:**
+   ```bash
+   # Terminal 4 - Frontend (React dashboard)
+   cd shellcon-frontend
+   npm install                    # first time only
+   npm run dev:localhost          # opens http://localhost:8080
+   ```
+
+6. **Verify everything works:**
+   - Open http://localhost:8080 in your browser
+   - Click "Read Story Now" to begin the ShellCon scenario
+   - In the **System Control Panel**, click each button – no red errors should appear
+
+### Option B: Local Development (Native)
+
+#### 1 · Launch the back-end services
 
 First off, clone this repository on your local machine:
 
@@ -69,7 +119,7 @@ cd shellcon-backend/services/aqua-brain  && shuttle run --port 8002
 ```
 If a port is busy: `lsof -ti :<port> | xargs kill -9` then retry. Alternatively, you can use the environment files to customize the ports as shown in the "Environment files – local development" section below.
 
-### 2 · Start the dashboard & confirm every API call locally
+#### 2 · Start the dashboard & confirm every API call locally
 
 Open a new terminal and run the following commands at the root of the repository:
 ```bash
@@ -159,18 +209,27 @@ Complete all four – the UI unlocks confetti! 🎉
 ---
 ## ☁️ Deploy & validate in the **cloud**
 
-1. For each service:
+### From DevContainer or Local Environment
+
+1. For each service (works the same in DevContainer or local):
    ```bash
-   cd services/<service>
-   shuttle deploy
-   # choose “CREATE NEW”, project name = folder name (e.g aqua-brain)
+   # Deploy aqua-monitor
+   cd shellcon-backend/services/aqua-monitor && shuttle deploy
+   
+   # Deploy species-hub  
+   cd shellcon-backend/services/species-hub && shuttle deploy
+   
+   # Deploy aqua-brain
+   cd shellcon-backend/services/aqua-brain && shuttle deploy
+   
+   # For each deployment, choose "CREATE NEW" and use the folder name as project name
    ```
 2. Configure the **frontend for cloud**:
    ```bash
    # create the env file once (or edit it if it already exists)
-   touch frontend/.env.prod
+   touch shellcon-frontend/.env.prod
    ```
-   Open `frontend/.env.prod` and paste the URLs printed by each `shuttle deploy` command:
+   Open `shellcon-frontend/.env.prod` and paste the URLs printed by each `shuttle deploy` command:
 
    ```env
    VITE_AQUA_MONITOR_URL=https://<aqua-monitor>.shuttleapp.app
@@ -181,7 +240,7 @@ Complete all four – the UI unlocks confetti! 🎉
 
 3. Restart the dashboard pointed at the cloud back-end:
    ```bash
-   cd frontend
+   cd shellcon-frontend
    npm run dev:prod
    ```
    Re-validate each challenge card to confirm remote success.
