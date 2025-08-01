@@ -6,9 +6,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Install latest Shuttle CLI
-RUN cargo install cargo-shuttle --locked && \
-    cargo cache --autoclean
+# Update Rust and install Shuttle CLI
+RUN rustup update stable && \
+    cargo install cargo-shuttle --locked && \
+    rm -rf /usr/local/cargo/registry
 
 ENV RUST_BACKTRACE=1
 ENV PATH="/root/.cargo/bin:${PATH}"
